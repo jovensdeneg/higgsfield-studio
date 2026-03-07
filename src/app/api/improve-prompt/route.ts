@@ -47,7 +47,10 @@ async function callGeminiModel(
       contents: [{ parts: [{ text: userPrompt }] }],
       generationConfig: {
         temperature: 0.7,
-        maxOutputTokens: 500,
+        maxOutputTokens: 2048,
+        // Disable thinking mode on 2.5 models — it consumes output tokens
+        // and we don't need reasoning for prompt expansion
+        thinkingConfig: { thinkingBudget: 0 },
       },
     }),
   });
@@ -113,7 +116,7 @@ async function callOpenAI(
         { role: "user", content: userPrompt },
       ],
       temperature: 0.7,
-      max_completion_tokens: 500,
+      max_completion_tokens: 2048,
     }),
   });
 
