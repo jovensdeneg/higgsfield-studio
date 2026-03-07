@@ -9,8 +9,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Higgsfield Studio",
-  description: "Dashboard de producao de videos com Higgsfield AI",
+  title: "Jovens de Negócios — Editor de Vídeos",
+  description: "Editor de Vídeos - NOITES 🌃",
 };
 
 export default function RootLayout({

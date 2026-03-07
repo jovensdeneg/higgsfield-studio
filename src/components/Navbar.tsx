@@ -34,9 +34,10 @@ export default function Navbar() {
               />
             </svg>
           </div>
-          <span className="text-lg font-semibold text-white">
-            Higgsfield Studio
-          </span>
+          <div className="flex flex-col leading-tight">
+            <span className="text-sm font-bold text-white">Jovens de Negócios</span>
+            <span className="text-[10px] text-slate-400">Editor de Vídeos - NOITES 🌃</span>
+          </div>
         </Link>
 
         {/* Navigation Links */}
