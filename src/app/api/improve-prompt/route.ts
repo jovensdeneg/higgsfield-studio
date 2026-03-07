@@ -67,7 +67,7 @@ async function callGeminiModel(
   if (!text) {
     return { ok: false, error: `Gemini ${model} returned empty response` };
   }
-  return { ok: true, text, provider: `gemini-${model}` };
+  return { ok: true, text, provider: model };
 }
 
 async function callGemini(
