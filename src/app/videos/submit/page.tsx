@@ -11,7 +11,7 @@ const VIDEO_MODELS = [
 ];
 
 const CAMERA_PRESETS = [
-  "", "Dolly In", "Dolly Out", "Dolly Left", "Dolly Right",
+  "Dolly In", "Dolly Out", "Dolly Left", "Dolly Right",
   "Pan Left", "Pan Right", "Tilt Up", "Tilt Down",
   "Crash Zoom In", "Crash Zoom Out", "360 Orbit",
   "Ballet Time", "FPV Drone", "Handheld",
@@ -31,15 +31,33 @@ export default function VideoSubmitPage() {
   const [result, setResult] = useState<{ request_id: string; video_url?: string; status?: string } | null>(null);
   const [uploadingStart, setUploadingStart] = useState(false);
   const [uploadingEnd, setUploadingEnd] = useState(false);
+  const [startUploadError, setStartUploadError] = useState<string | null>(null);
+  const [endUploadError, setEndUploadError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const startFileRef = useRef<HTMLInputElement>(null);
   const endFileRef = useRef<HTMLInputElement>(null);
 
-  async function uploadFile(file: File, setUrl: (u: string) => void, setPreview: (p: string) => void, setLoading: (l: boolean) => void) {
+  async function uploadFile(
+    file: File,
+    setUrl: (u: string) => void,
+    setPreview: (p: string) => void,
+    setLoading: (l: boolean) => void,
+    setUploadError: (e: string | null) => void
+  ) {
     setLoading(true);
-    // Show local preview
+    setUploadError(null);
+
+    // Show local preview immediately
     const reader = new FileReader();
     reader.onload = (e) => setPreview(e.target?.result as string);
     reader.readAsDataURL(file);
+
+    // Check file size (Vercel limit ~4.5MB for API routes)
+    if (file.size > 4 * 1024 * 1024) {
+      setUploadError("Imagem muito grande (max 4MB). Reduza o tamanho e tente novamente.");
+      setLoading(false);
+      return;
+    }
 
     const formData = new FormData();
     formData.append("file", file);
@@ -47,17 +65,40 @@ export default function VideoSubmitPage() {
       const res = await fetch("/api/upload", { method: "POST", body: formData });
       if (res.ok) {
         const data = await res.json();
-        setUrl(data.url);
+        if (data.url) {
+          setUrl(data.url);
+        } else {
+          setUploadError("Upload retornou sem URL. Tente novamente.");
+        }
       } else {
-        alert("Falha ao enviar imagem");
+        const errData = await res.json().catch(() => ({}));
+        setUploadError(errData.error || `Falha ao enviar imagem (${res.status})`);
       }
-    } catch { alert("Erro de rede"); }
-    finally { setLoading(false); }
+    } catch {
+      setUploadError("Erro de rede ao enviar imagem. Verifique sua conexao.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function clearStart() {
+    setStartImageUrl("");
+    setStartPreview(null);
+    setStartUploadError(null);
+    if (startFileRef.current) startFileRef.current.value = "";
+  }
+
+  function clearEnd() {
+    setEndImageUrl("");
+    setEndPreview(null);
+    setEndUploadError(null);
+    if (endFileRef.current) endFileRef.current.value = "";
   }
 
   async function handleSubmit() {
     if (!startImageUrl || !movementPrompt.trim() || submitting) return;
     setSubmitting(true);
+    setSubmitError(null);
     try {
       const res = await fetch("/api/videos/submit-direct", {
         method: "POST",
@@ -76,18 +117,24 @@ export default function VideoSubmitPage() {
         setResult({ request_id: data.request_id, status: "submitted" });
       } else {
         const data = await res.json().catch(() => ({}));
-        alert(data.error || "Erro ao enviar vídeo");
+        setSubmitError(data.error || `Erro ao enviar video (${res.status})`);
       }
-    } catch { alert("Erro de rede"); }
-    finally { setSubmitting(false); }
+    } catch {
+      setSubmitError("Erro de rede ao enviar video. Verifique sua conexao.");
+    } finally {
+      setSubmitting(false);
+    }
   }
+
+  const startReady = !!startImageUrl;
+  const canSubmit = startReady && !!movementPrompt.trim() && !submitting;
 
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-white">Vídeo Direto</h1>
+        <h1 className="text-2xl font-bold text-white">Video Direto</h1>
         <p className="mt-1 text-sm text-slate-400">
-          Envie imagens prontas e gere um vídeo diretamente
+          Envie imagens prontas e gere um video diretamente
         </p>
       </div>
 
@@ -99,13 +146,44 @@ export default function VideoSubmitPage() {
             <label className="block text-xs font-medium text-slate-400">Frame Inicial *</label>
             <div
               onClick={() => !uploadingStart && startFileRef.current?.click()}
-              className={`flex cursor-pointer items-center justify-center overflow-hidden rounded-xl border-2 border-dashed transition-colors ${
-                startPreview ? "border-emerald-500/50" : "border-slate-700 hover:border-slate-600"
+              className={`relative flex cursor-pointer items-center justify-center overflow-hidden rounded-xl border-2 border-dashed transition-colors ${
+                startReady
+                  ? "border-emerald-500/50"
+                  : startUploadError
+                    ? "border-red-500/50"
+                    : startPreview
+                      ? "border-amber-500/50"
+                      : "border-slate-700 hover:border-slate-600"
               }`}
             >
               {startPreview ? (
                 <div className="aspect-video w-full">
                   <img src={startPreview} alt="Start frame" className="h-full w-full object-cover" />
+                  {/* Status overlay */}
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-3 py-2">
+                    {uploadingStart ? (
+                      <div className="flex items-center gap-2 text-xs text-amber-400">
+                        <div className="h-3 w-3 animate-spin rounded-full border-2 border-amber-400/30 border-t-amber-400" />
+                        Enviando para Higgsfield...
+                      </div>
+                    ) : startReady ? (
+                      <span className="text-xs text-emerald-400">Enviado com sucesso</span>
+                    ) : startUploadError ? (
+                      <span className="text-xs text-red-400">Falha — clique para tentar novamente</span>
+                    ) : null}
+                  </div>
+                  {/* Clear button */}
+                  {!uploadingStart && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); clearStart(); }}
+                      className="absolute right-2 top-2 rounded-full bg-black/60 p-1 text-white/80 hover:bg-black/80 hover:text-white"
+                    >
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div className="flex aspect-video w-full flex-col items-center justify-center gap-2 text-slate-500">
@@ -122,8 +200,11 @@ export default function VideoSubmitPage() {
                 </div>
               )}
             </div>
+            {startUploadError && (
+              <p className="text-xs text-red-400">{startUploadError}</p>
+            )}
             <input ref={startFileRef} type="file" accept="image/*" className="hidden"
-              onChange={(e) => e.target.files?.[0] && uploadFile(e.target.files[0], setStartImageUrl, setStartPreview, setUploadingStart)} />
+              onChange={(e) => e.target.files?.[0] && uploadFile(e.target.files[0], setStartImageUrl, setStartPreview, setUploadingStart, setStartUploadError)} />
           </div>
 
           {/* End Frame */}
@@ -131,13 +212,42 @@ export default function VideoSubmitPage() {
             <label className="block text-xs font-medium text-slate-400">Frame Final (opcional)</label>
             <div
               onClick={() => !uploadingEnd && endFileRef.current?.click()}
-              className={`flex cursor-pointer items-center justify-center overflow-hidden rounded-xl border-2 border-dashed transition-colors ${
-                endPreview ? "border-emerald-500/50" : "border-slate-700 hover:border-slate-600"
+              className={`relative flex cursor-pointer items-center justify-center overflow-hidden rounded-xl border-2 border-dashed transition-colors ${
+                endImageUrl
+                  ? "border-emerald-500/50"
+                  : endUploadError
+                    ? "border-red-500/50"
+                    : endPreview
+                      ? "border-amber-500/50"
+                      : "border-slate-700 hover:border-slate-600"
               }`}
             >
               {endPreview ? (
                 <div className="aspect-video w-full">
                   <img src={endPreview} alt="End frame" className="h-full w-full object-cover" />
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-3 py-2">
+                    {uploadingEnd ? (
+                      <div className="flex items-center gap-2 text-xs text-amber-400">
+                        <div className="h-3 w-3 animate-spin rounded-full border-2 border-amber-400/30 border-t-amber-400" />
+                        Enviando para Higgsfield...
+                      </div>
+                    ) : endImageUrl ? (
+                      <span className="text-xs text-emerald-400">Enviado com sucesso</span>
+                    ) : endUploadError ? (
+                      <span className="text-xs text-red-400">Falha — clique para tentar novamente</span>
+                    ) : null}
+                  </div>
+                  {!uploadingEnd && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); clearEnd(); }}
+                      className="absolute right-2 top-2 rounded-full bg-black/60 p-1 text-white/80 hover:bg-black/80 hover:text-white"
+                    >
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div className="flex aspect-video w-full flex-col items-center justify-center gap-2 text-slate-500">
@@ -154,8 +264,11 @@ export default function VideoSubmitPage() {
                 </div>
               )}
             </div>
+            {endUploadError && (
+              <p className="text-xs text-red-400">{endUploadError}</p>
+            )}
             <input ref={endFileRef} type="file" accept="image/*" className="hidden"
-              onChange={(e) => e.target.files?.[0] && uploadFile(e.target.files[0], setEndImageUrl, setEndPreview, setUploadingEnd)} />
+              onChange={(e) => e.target.files?.[0] && uploadFile(e.target.files[0], setEndImageUrl, setEndPreview, setUploadingEnd, setEndUploadError)} />
           </div>
         </div>
 
@@ -184,7 +297,7 @@ export default function VideoSubmitPage() {
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-400">Duração</label>
+            <label className="mb-1 block text-xs font-medium text-slate-400">Duracao</label>
             <select value={duration} onChange={(e) => setDuration(Number(e.target.value))}
               className="w-full rounded-lg border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500">
               <option value={5}>5 segundos</option>
@@ -193,40 +306,60 @@ export default function VideoSubmitPage() {
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-400">Preset Câmera</label>
+            <label className="mb-1 block text-xs font-medium text-slate-400">Preset Camera</label>
             <select value={preset} onChange={(e) => setPreset(e.target.value)}
               className="w-full rounded-lg border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500">
               <option value="">Nenhum</option>
-              {CAMERA_PRESETS.filter(Boolean).map((p) => <option key={p} value={p}>{p}</option>)}
+              {CAMERA_PRESETS.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
           </div>
         </div>
 
+        {/* Submit Error */}
+        {submitError && (
+          <div className="rounded-lg border border-red-800 bg-red-900/20 px-4 py-3 text-sm text-red-400">
+            {submitError}
+          </div>
+        )}
+
+        {/* Submit hint when not ready */}
+        {!startReady && startPreview && !uploadingStart && (
+          <div className="rounded-lg border border-amber-800/50 bg-amber-900/20 px-4 py-3 text-xs text-amber-400">
+            O upload do frame inicial falhou. Clique na imagem para tentar novamente, ou escolha outra imagem.
+          </div>
+        )}
+
         {/* Submit */}
         <button
           onClick={handleSubmit}
-          disabled={submitting || !startImageUrl || !movementPrompt.trim()}
+          disabled={!canSubmit}
           className="w-full rounded-lg bg-emerald-600 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {submitting ? (
             <span className="flex items-center justify-center gap-2">
               <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-              Enviando vídeo...
+              Enviando video...
             </span>
-          ) : "Enviar Vídeo"}
+          ) : !startReady ? (
+            "Envie o frame inicial para continuar"
+          ) : !movementPrompt.trim() ? (
+            "Preencha o prompt de movimento"
+          ) : (
+            "Enviar Video"
+          )}
         </button>
 
         {/* Result */}
         {result && (
-          <div className="rounded-xl border border-slate-800 bg-slate-900 p-6 space-y-3">
-            <h3 className="text-sm font-semibold text-white">Vídeo Enviado</h3>
+          <div className="space-y-3 rounded-xl border border-slate-800 bg-slate-900 p-6">
+            <h3 className="text-sm font-semibold text-white">Video Enviado</h3>
             <p className="text-xs text-slate-400">
               Request ID: <code className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-emerald-400">{result.request_id}</code>
             </p>
             <p className="text-xs text-slate-500">
-              Acompanhe o status na seção Batch ou aguarde o resultado aparecer na Galeria.
+              Acompanhe o status na secao Batch ou aguarde o resultado aparecer na Galeria.
             </p>
-            {result.video_url && <VideoPlayer url={result.video_url} />}
+            {result.video_url && <VideoPlayer url={result.video_url} title="Video Direto" />}
           </div>
         )}
       </div>

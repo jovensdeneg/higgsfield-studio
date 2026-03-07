@@ -62,17 +62,30 @@ export async function POST(request: NextRequest) {
           { role: "user", content: prompt },
         ],
         temperature: 0.7,
-        max_tokens: 500,
+        max_completion_tokens: 500,
       }),
     });
 
     if (!response.ok) {
-      const errData = await response.json().catch(() => ({}));
-      console.error("OpenAI error:", errData);
-      return NextResponse.json(
-        { error: "Failed to improve prompt" },
-        { status: 502 }
-      );
+      const errText = await response.text().catch(() => "");
+      console.error("OpenAI error:", response.status, errText);
+
+      // Parse error detail for user-facing message
+      let detail = "Falha ao chamar OpenAI";
+      try {
+        const errJson = JSON.parse(errText);
+        detail = errJson.error?.message ?? detail;
+      } catch { /* keep default */ }
+
+      if (response.status === 401) {
+        detail = "OPENAI_API_KEY inválida ou expirada. Verifique nas configurações da Vercel.";
+      } else if (response.status === 429) {
+        detail = "Limite de requisições da OpenAI excedido. Tente novamente em alguns segundos.";
+      } else if (response.status === 404) {
+        detail = "Modelo gpt-4o não encontrado. Verifique se sua chave tem acesso a este modelo.";
+      }
+
+      return NextResponse.json({ error: detail }, { status: 502 });
     }
 
     const data = await response.json();
