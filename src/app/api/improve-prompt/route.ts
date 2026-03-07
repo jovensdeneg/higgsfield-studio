@@ -24,6 +24,47 @@ Rules:
 - Focus on MOTION and CHANGE over time — static descriptions are useless for video
 - Be cinematic — think like a director describing a shot`;
 
+// Models to try in order of preference (fallback chain)
+const MODELS_TO_TRY = ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"];
+
+async function callOpenAI(
+  apiKey: string,
+  model: string,
+  systemPrompt: string,
+  userPrompt: string
+): Promise<{ ok: true; text: string } | { ok: false; status: number; error: string }> {
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.7,
+      max_completion_tokens: 500,
+    }),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text().catch(() => "");
+    let errorMessage = `OpenAI ${model} error (${response.status})`;
+    try {
+      const errJson = JSON.parse(errText);
+      errorMessage = errJson.error?.message ?? errorMessage;
+    } catch { /* use default */ }
+    return { ok: false, status: response.status, error: errorMessage };
+  }
+
+  const data = await response.json();
+  const text = data.choices?.[0]?.message?.content?.trim() ?? "";
+  return { ok: true, text };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { prompt, context } = await request.json();
@@ -42,56 +83,47 @@ export async function POST(request: NextRequest) {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
-        { error: "OPENAI_API_KEY not configured" },
+        { error: "OPENAI_API_KEY nao configurada. Adicione nas variaveis de ambiente da Vercel." },
         { status: 500 }
       );
     }
 
     const systemPrompt = context === "image" ? IMAGE_SYSTEM_PROMPT : VIDEO_SYSTEM_PROMPT;
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: prompt },
-        ],
-        temperature: 0.7,
-        max_completion_tokens: 500,
-      }),
-    });
+    // Try each model in the fallback chain
+    const errors: string[] = [];
 
-    if (!response.ok) {
-      const errText = await response.text().catch(() => "");
-      console.error("OpenAI error:", response.status, errText);
+    for (const model of MODELS_TO_TRY) {
+      console.log(`Trying model: ${model}`);
+      const result = await callOpenAI(apiKey, model, systemPrompt, prompt);
 
-      // Parse error detail for user-facing message
-      let detail = "Falha ao chamar OpenAI";
-      try {
-        const errJson = JSON.parse(errText);
-        detail = errJson.error?.message ?? detail;
-      } catch { /* keep default */ }
-
-      if (response.status === 401) {
-        detail = "OPENAI_API_KEY inválida ou expirada. Verifique nas configurações da Vercel.";
-      } else if (response.status === 429) {
-        detail = "Limite de requisições da OpenAI excedido. Tente novamente em alguns segundos.";
-      } else if (response.status === 404) {
-        detail = "Modelo gpt-4o não encontrado. Verifique se sua chave tem acesso a este modelo.";
+      if (result.ok && result.text) {
+        return NextResponse.json({
+          improved_prompt: result.text,
+          model_used: model,
+        });
       }
 
-      return NextResponse.json({ error: detail }, { status: 502 });
+      if (!result.ok) {
+        console.error(`Model ${model} failed:`, result.error);
+        errors.push(`${model}: ${result.error}`);
+
+        // If it's a 401 (bad key), no point trying other models
+        if (result.status === 401) {
+          return NextResponse.json(
+            { error: `Chave da OpenAI invalida ou expirada: ${result.error}` },
+            { status: 502 }
+          );
+        }
+      }
     }
 
-    const data = await response.json();
-    const improvedPrompt = data.choices?.[0]?.message?.content?.trim() ?? prompt;
-
-    return NextResponse.json({ improved_prompt: improvedPrompt });
+    // All models failed — show all errors
+    const allErrors = errors.join(" | ");
+    return NextResponse.json(
+      { error: `Todos os modelos falharam: ${allErrors}` },
+      { status: 502 }
+    );
   } catch (err) {
     console.error("Improve prompt error:", err);
     return NextResponse.json(
