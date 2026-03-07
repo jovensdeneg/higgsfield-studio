@@ -7,6 +7,8 @@ const NAV_LINKS = [
   { href: "/", label: "Dashboard" },
   { href: "/generate", label: "Nova Cena" },
   { href: "/scenes", label: "Cenas" },
+  { href: "/characters", label: "Personagens" },
+  { href: "/videos/submit", label: "Video Direto" },
   { href: "/batch", label: "Batch" },
   { href: "/videos", label: "Galeria" },
 ] as const;

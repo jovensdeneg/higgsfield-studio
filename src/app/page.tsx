@@ -32,6 +32,7 @@ interface BatchStatus {
 export default function DashboardPage() {
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [batchStatus, setBatchStatus] = useState<BatchStatus | null>(null);
+  const [characterCount, setCharacterCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [launchingBatch, setLaunchingBatch] = useState(false);
@@ -40,9 +41,10 @@ export default function DashboardPage() {
     async function fetchData() {
       try {
         setLoading(true);
-        const [scenesRes, batchRes] = await Promise.all([
+        const [scenesRes, batchRes, charsRes] = await Promise.all([
           fetch("/api/scenes"),
           fetch("/api/batch/status"),
+          fetch("/api/characters"),
         ]);
 
         if (scenesRes.ok) {
@@ -53,6 +55,12 @@ export default function DashboardPage() {
         if (batchRes.ok) {
           const data = await batchRes.json();
           setBatchStatus(data.batch ?? null);
+        }
+
+        if (charsRes.ok) {
+          const data = await charsRes.json();
+          const chars = data.characters ?? [];
+          setCharacterCount(Array.isArray(chars) ? chars.length : 0);
         }
       } catch (err) {
         setError(
@@ -182,7 +190,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <div className="rounded-xl border border-slate-800 bg-slate-900 p-5">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/15">
@@ -251,6 +259,30 @@ export default function DashboardPage() {
             <div>
               <p className="text-2xl font-bold text-white">{completedVideos}</p>
               <p className="text-xs text-slate-400">Videos Prontos</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-slate-800 bg-slate-900 p-5">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-rose-500/15">
+              <svg
+                className="h-5 w-5 text-rose-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={1.5}
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"
+                />
+              </svg>
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-white">{characterCount}</p>
+              <p className="text-xs text-slate-400">Personagens</p>
             </div>
           </div>
         </div>

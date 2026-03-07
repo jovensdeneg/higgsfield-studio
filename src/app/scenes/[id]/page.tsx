@@ -5,6 +5,12 @@ import { useParams, useRouter } from "next/navigation";
 import StatusBadge from "@/components/StatusBadge";
 import ImageGrid from "@/components/ImageGrid";
 import VideoPlayer from "@/components/VideoPlayer";
+import FrameCompare from "@/components/FrameCompare";
+import ImprovePromptButton from "@/components/ImprovePromptButton";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 interface Scene {
   scene_id: string;
@@ -13,8 +19,16 @@ interface Scene {
   model_image: string;
   generated_images: { url: string; metadata?: Record<string, unknown> }[];
   approved_image_index: number | null;
+  reference_images: string[];
+  character_id: string | null;
   movement_prompt: string | null;
   optimized_movement_prompt: string | null;
+  end_frame_prompt: string | null;
+  end_frame_optimized_prompt: string | null;
+  end_frame_model_image: string | null;
+  end_frame_generated_images: { url: string; metadata?: Record<string, unknown> }[];
+  end_frame_approved_index: number | null;
+  end_frame_reference_images: string[];
   video_config: {
     model: string;
     duration: number;
@@ -29,6 +43,10 @@ interface Scene {
   updated_at: string;
 }
 
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
 const VIDEO_MODELS = [
   { value: "kling-3.0", label: "Kling 3.0" },
   { value: "kling-o1", label: "Kling O1" },
@@ -42,24 +60,61 @@ const DURATIONS = [
 ];
 
 const CAMERA_PRESETS = [
-  "Dolly In", "Dolly Out", "Dolly Left", "Dolly Right",
-  "Pan Left", "Pan Right", "Tilt Up", "Tilt Down",
-  "Crash Zoom In", "Crash Zoom Out", "360 Orbit",
-  "Ballet Time", "FPV Drone", "Handheld",
-  "Car Grip", "Snorricam", "Dutch Angle",
+  "Dolly In",
+  "Dolly Out",
+  "Dolly Left",
+  "Dolly Right",
+  "Pan Left",
+  "Pan Right",
+  "Tilt Up",
+  "Tilt Down",
+  "Crash Zoom In",
+  "Crash Zoom Out",
+  "360 Orbit",
+  "Ballet Time",
+  "FPV Drone",
+  "Handheld",
+  "Car Grip",
+  "Snorricam",
+  "Dutch Angle",
 ];
+
+const IMAGE_MODELS = [
+  { value: "nano-banana-pro", label: "Nano Banana Pro" },
+  { value: "flux-pro-kontext-max", label: "Flux Pro Kontext Max" },
+  { value: "seedream-v4", label: "Seedream v4" },
+];
+
+// ---------------------------------------------------------------------------
+// Shared style classes
+// ---------------------------------------------------------------------------
+
+const inputClasses =
+  "w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50";
+
+const labelClasses = "mb-1 block text-xs font-medium text-slate-400";
+
+const sectionHeadingClasses = "mb-4 text-lg font-semibold text-white";
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 
 export default function SceneDetailPage() {
   const params = useParams();
   const router = useRouter();
   const sceneId = params.id as string;
 
+  // ---- Core data ----------------------------------------------------------
   const [scene, setScene] = useState<Scene | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Approve form state
-  const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
+  // ---- Image selection (0-based for ImageGrid) ----------------------------
+  const [selectedStartIndex, setSelectedStartIndex] = useState<number | null>(null);
+  const [selectedEndIndex, setSelectedEndIndex] = useState<number | null>(null);
+
+  // ---- Approve form -------------------------------------------------------
   const [movementPrompt, setMovementPrompt] = useState("");
   const [videoModel, setVideoModel] = useState("kling-3.0");
   const [duration, setDuration] = useState(5);
@@ -67,12 +122,31 @@ export default function SceneDetailPage() {
   const [approving, setApproving] = useState(false);
   const [approveError, setApproveError] = useState<string | null>(null);
 
-  // Regenerate form state
+  // ---- Regenerate form ----------------------------------------------------
   const [showRegenForm, setShowRegenForm] = useState(false);
   const [regenPrompt, setRegenPrompt] = useState("");
   const [regenModel, setRegenModel] = useState("");
   const [regenVariations, setRegenVariations] = useState(3);
+  const [regenTarget, setRegenTarget] = useState<"start" | "end">("start");
   const [regenerating, setRegenerating] = useState(false);
+
+  // ---- Derived state ------------------------------------------------------
+  const hasEndFrameImages = (scene?.end_frame_generated_images?.length ?? 0) > 0;
+  const isImagesGenerated = scene?.status === "images_generated";
+  const isApprovedOrSubmitted =
+    scene?.status === "approved" || scene?.status === "video_submitted";
+
+  // Resolved selected image URLs for preview
+  const startImageUrl =
+    selectedStartIndex !== null && scene
+      ? scene.generated_images[selectedStartIndex]?.url ?? null
+      : null;
+  const endImageUrl =
+    selectedEndIndex !== null && scene
+      ? scene.end_frame_generated_images[selectedEndIndex]?.url ?? null
+      : null;
+
+  // ---- Data fetching ------------------------------------------------------
 
   useEffect(() => {
     async function fetchScene() {
@@ -81,17 +155,13 @@ export default function SceneDetailPage() {
         const res = await fetch(`/api/scenes/${sceneId}`);
         if (!res.ok) {
           throw new Error(
-            res.status === 404
-              ? "Cena nao encontrada"
-              : "Erro ao carregar cena"
+            res.status === 404 ? "Cena nao encontrada" : "Erro ao carregar cena"
           );
         }
         const data = await res.json();
         setScene(data.scene);
       } catch (err) {
-        setError(
-          err instanceof Error ? err.message : "Erro ao carregar cena"
-        );
+        setError(err instanceof Error ? err.message : "Erro ao carregar cena");
       } finally {
         setLoading(false);
       }
@@ -100,11 +170,13 @@ export default function SceneDetailPage() {
     if (sceneId) fetchScene();
   }, [sceneId]);
 
+  // ---- Handlers -----------------------------------------------------------
+
   async function handleApprove(e: React.FormEvent) {
     e.preventDefault();
 
-    if (selectedImageIndex === null) {
-      setApproveError("Selecione uma imagem antes de aprovar.");
+    if (selectedStartIndex === null) {
+      setApproveError("Selecione uma imagem do frame inicial antes de aprovar.");
       return;
     }
 
@@ -117,13 +189,16 @@ export default function SceneDetailPage() {
     setApproveError(null);
 
     try {
-      // ImageGrid uses 0-based indices; API expects 1-based image_index
       const body: Record<string, unknown> = {
-        image_index: selectedImageIndex + 1,
+        image_index: selectedStartIndex + 1,
         movement_prompt: movementPrompt.trim(),
         video_model: videoModel,
         duration,
       };
+
+      if (selectedEndIndex !== null) {
+        body.end_frame_index = selectedEndIndex + 1;
+      }
 
       if (preset) {
         body.preset = preset;
@@ -167,6 +242,10 @@ export default function SceneDetailPage() {
         body.new_model = regenModel;
       }
 
+      if (regenTarget === "end") {
+        body.target = "end";
+      }
+
       const res = await fetch(`/api/scenes/${sceneId}/regenerate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -182,7 +261,14 @@ export default function SceneDetailPage() {
 
       setScene(data.scene);
       setShowRegenForm(false);
-      setSelectedImageIndex(null);
+
+      // Reset the index for whichever frame was regenerated
+      if (regenTarget === "end") {
+        setSelectedEndIndex(null);
+      } else {
+        setSelectedStartIndex(null);
+      }
+
       setRegenPrompt("");
       setRegenModel("");
     } catch {
@@ -191,6 +277,8 @@ export default function SceneDetailPage() {
       setRegenerating(false);
     }
   }
+
+  // ---- Loading & error states ---------------------------------------------
 
   if (loading) {
     return (
@@ -219,30 +307,32 @@ export default function SceneDetailPage() {
     );
   }
 
+  // ---- Render -------------------------------------------------------------
+
   return (
     <div className="space-y-8">
-      {/* Header */}
+      {/* ================================================================= */}
+      {/* HEADER                                                            */}
+      {/* ================================================================= */}
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
+        <div className="min-w-0 flex-1">
           <div className="mb-2 flex items-center gap-3">
             <h1 className="text-2xl font-bold text-white">{scene.scene_id}</h1>
             <StatusBadge status={scene.status} />
           </div>
-          <p className="max-w-2xl text-sm text-slate-400">
-            {scene.original_prompt}
-          </p>
-          <div className="mt-2 flex items-center gap-4 text-xs text-slate-500">
+          <p className="max-w-2xl text-sm text-slate-400">{scene.original_prompt}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-slate-500">
             <span>Modelo: {scene.model_image}</span>
             <span>
-              Criado em:{" "}
-              {new Date(scene.created_at).toLocaleDateString("pt-BR")}
+              Criado em: {new Date(scene.created_at).toLocaleDateString("pt-BR")}
             </span>
+            {scene.character_id && <span>Personagem: {scene.character_id}</span>}
           </div>
         </div>
 
         <button
           onClick={() => setShowRegenForm(!showRegenForm)}
-          className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-sm font-medium text-slate-200 transition-colors hover:bg-slate-700"
+          className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-sm font-medium text-slate-200 transition-colors hover:bg-slate-700"
         >
           <svg
             className="h-4 w-4"
@@ -261,36 +351,60 @@ export default function SceneDetailPage() {
         </button>
       </div>
 
-      {/* Regenerate Form */}
+      {/* ================================================================= */}
+      {/* REGENERATE FORM                                                   */}
+      {/* ================================================================= */}
       {showRegenForm && (
         <div className="rounded-xl border border-slate-800 bg-slate-900 p-6">
           <h3 className="mb-4 text-sm font-semibold text-white">
             Regenerar Imagens
           </h3>
           <form onSubmit={handleRegenerate} className="space-y-4">
+            {/* Target selector — only if end frame images exist */}
+            {hasEndFrameImages && (
+              <div>
+                <label htmlFor="regen-target" className={labelClasses}>
+                  Frame Alvo
+                </label>
+                <select
+                  id="regen-target"
+                  value={regenTarget}
+                  onChange={(e) =>
+                    setRegenTarget(e.target.value as "start" | "end")
+                  }
+                  disabled={regenerating}
+                  className={inputClasses}
+                >
+                  <option value="start">Frame Inicial</option>
+                  <option value="end">Frame Final</option>
+                </select>
+              </div>
+            )}
+
+            {/* Prompt */}
             <div>
-              <label
-                htmlFor="regen-prompt"
-                className="mb-1 block text-xs font-medium text-slate-400"
-              >
-                Novo Prompt (opcional - usa o anterior se vazio)
+              <label htmlFor="regen-prompt" className={labelClasses}>
+                Novo Prompt (opcional — usa o anterior se vazio)
               </label>
               <textarea
                 id="regen-prompt"
                 value={regenPrompt}
                 onChange={(e) => setRegenPrompt(e.target.value)}
-                placeholder={scene.optimized_prompt}
+                placeholder={
+                  regenTarget === "end" && scene.end_frame_optimized_prompt
+                    ? scene.end_frame_optimized_prompt
+                    : scene.optimized_prompt
+                }
                 rows={3}
                 disabled={regenerating}
-                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
+                className={inputClasses}
               />
             </div>
+
+            {/* Model + Variations */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label
-                  htmlFor="regen-model"
-                  className="mb-1 block text-xs font-medium text-slate-400"
-                >
+                <label htmlFor="regen-model" className={labelClasses}>
                   Modelo (opcional)
                 </label>
                 <select
@@ -298,31 +412,26 @@ export default function SceneDetailPage() {
                   value={regenModel}
                   onChange={(e) => setRegenModel(e.target.value)}
                   disabled={regenerating}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
+                  className={inputClasses}
                 >
                   <option value="">Manter atual ({scene.model_image})</option>
-                  <option value="nano-banana-pro">Nano Banana Pro</option>
-                  <option value="flux-pro-kontext-max">
-                    Flux Pro Kontext Max
-                  </option>
-                  <option value="seedream-v4">Seedream v4</option>
+                  {IMAGE_MODELS.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div>
-                <label
-                  htmlFor="regen-variations"
-                  className="mb-1 block text-xs font-medium text-slate-400"
-                >
+                <label htmlFor="regen-variations" className={labelClasses}>
                   Variacoes
                 </label>
                 <select
                   id="regen-variations"
                   value={regenVariations}
-                  onChange={(e) =>
-                    setRegenVariations(Number(e.target.value))
-                  }
+                  onChange={(e) => setRegenVariations(Number(e.target.value))}
                   disabled={regenerating}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
+                  className={inputClasses}
                 >
                   {[1, 2, 3, 4, 5, 6, 7].map((n) => (
                     <option key={n} value={n}>
@@ -332,6 +441,8 @@ export default function SceneDetailPage() {
                 </select>
               </div>
             </div>
+
+            {/* Actions */}
             <div className="flex items-center gap-3">
               <button
                 type="submit"
@@ -359,49 +470,107 @@ export default function SceneDetailPage() {
         </div>
       )}
 
-      {/* Generated Images */}
-      <div>
-        <h2 className="mb-4 text-lg font-semibold text-white">
-          Imagens Geradas
-        </h2>
-        <ImageGrid
-          images={scene.generated_images}
-          selectedIndex={
-            scene.status === "images_generated"
-              ? selectedImageIndex
-              : scene.approved_image_index != null
-                ? scene.approved_image_index - 1
-                : null
-          }
-          onSelect={(index: number) => {
-            if (scene.status === "images_generated") {
-              setSelectedImageIndex(index);
+      {/* ================================================================= */}
+      {/* START FRAME IMAGES                                                */}
+      {/* ================================================================= */}
+      {scene.generated_images.length > 0 && (
+        <div>
+          <h2 className={sectionHeadingClasses}>Imagens do Frame Inicial</h2>
+          <ImageGrid
+            images={scene.generated_images}
+            selectedIndex={
+              isImagesGenerated
+                ? selectedStartIndex
+                : scene.approved_image_index != null
+                  ? scene.approved_image_index - 1
+                  : null
             }
-          }}
-        />
-      </div>
+            onSelect={(index: number) => {
+              if (isImagesGenerated) {
+                setSelectedStartIndex(index);
+              }
+            }}
+          />
+        </div>
+      )}
 
-      {/* Approve Form (only when status is images_generated) */}
-      {scene.status === "images_generated" && (
+      {/* ================================================================= */}
+      {/* END FRAME IMAGES                                                  */}
+      {/* ================================================================= */}
+      {hasEndFrameImages && (
+        <div>
+          <h2 className={sectionHeadingClasses}>Imagens do Frame Final</h2>
+          <ImageGrid
+            images={scene.end_frame_generated_images}
+            selectedIndex={
+              isImagesGenerated
+                ? selectedEndIndex
+                : scene.end_frame_approved_index != null
+                  ? scene.end_frame_approved_index - 1
+                  : null
+            }
+            onSelect={(index: number) => {
+              if (isImagesGenerated) {
+                setSelectedEndIndex(index);
+              }
+            }}
+          />
+        </div>
+      )}
+
+      {/* ================================================================= */}
+      {/* FRAME PREVIEW (when at least start frame is selected)             */}
+      {/* ================================================================= */}
+      {isImagesGenerated && startImageUrl && (
+        <div>
+          <h2 className={sectionHeadingClasses}>Preview dos Frames Selecionados</h2>
+          <FrameCompare
+            startImageUrl={startImageUrl}
+            endImageUrl={endImageUrl}
+          />
+        </div>
+      )}
+
+      {/* ================================================================= */}
+      {/* APPROVE FORM                                                      */}
+      {/* ================================================================= */}
+      {isImagesGenerated && (
         <div className="rounded-xl border border-slate-800 bg-slate-900 p-6">
-          <h3 className="mb-4 text-lg font-semibold text-white">
-            Aprovar Cena
-          </h3>
+          <h3 className={sectionHeadingClasses}>Aprovar Cena</h3>
           <form onSubmit={handleApprove} className="space-y-4">
-            {/* Selected image indicator */}
-            <div className="rounded-lg bg-slate-800/50 px-4 py-3 text-sm">
-              {selectedImageIndex !== null ? (
-                <span className="text-emerald-400">
-                  Imagem {selectedImageIndex + 1} selecionada
-                </span>
-              ) : (
-                <span className="text-slate-500">
-                  Clique em uma imagem acima para seleciona-la
-                </span>
+            {/* Selection indicators */}
+            <div className="space-y-2">
+              {/* Start frame indicator */}
+              <div className="rounded-lg bg-slate-800/50 px-4 py-3 text-sm">
+                {selectedStartIndex !== null ? (
+                  <span className="text-emerald-400">
+                    Frame inicial: Variacao {selectedStartIndex + 1} selecionada
+                  </span>
+                ) : (
+                  <span className="text-slate-500">
+                    Clique em uma imagem do frame inicial para seleciona-la
+                  </span>
+                )}
+              </div>
+
+              {/* End frame indicator — only if end frame images exist */}
+              {hasEndFrameImages && (
+                <div className="rounded-lg bg-slate-800/50 px-4 py-3 text-sm">
+                  {selectedEndIndex !== null ? (
+                    <span className="text-emerald-400">
+                      Frame final: Variacao {selectedEndIndex + 1} selecionada
+                    </span>
+                  ) : (
+                    <span className="text-slate-500">
+                      Clique em uma imagem do frame final para seleciona-la
+                      (opcional)
+                    </span>
+                  )}
+                </div>
               )}
             </div>
 
-            {/* Movement Prompt */}
+            {/* Movement prompt with ImprovePromptButton */}
             <div>
               <label
                 htmlFor="movement-prompt"
@@ -409,24 +578,29 @@ export default function SceneDetailPage() {
               >
                 Prompt de Movimento
               </label>
-              <textarea
-                id="movement-prompt"
-                value={movementPrompt}
-                onChange={(e) => setMovementPrompt(e.target.value)}
-                placeholder="Descreva o que deve acontecer na cena: movimentos, transicoes, efeitos..."
-                rows={3}
-                disabled={approving}
-                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
-              />
+              <div className="space-y-2">
+                <textarea
+                  id="movement-prompt"
+                  value={movementPrompt}
+                  onChange={(e) => setMovementPrompt(e.target.value)}
+                  placeholder="Descreva o que deve acontecer na cena: movimentos, transicoes, efeitos..."
+                  rows={3}
+                  disabled={approving}
+                  className={inputClasses}
+                />
+                <ImprovePromptButton
+                  prompt={movementPrompt}
+                  context="video"
+                  onImproved={(improved) => setMovementPrompt(improved)}
+                  disabled={approving}
+                />
+              </div>
             </div>
 
-            {/* Video Config Row */}
+            {/* Video config row */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div>
-                <label
-                  htmlFor="video-model"
-                  className="mb-1 block text-xs font-medium text-slate-400"
-                >
+                <label htmlFor="video-model" className={labelClasses}>
                   Modelo de Video
                 </label>
                 <select
@@ -434,7 +608,7 @@ export default function SceneDetailPage() {
                   value={videoModel}
                   onChange={(e) => setVideoModel(e.target.value)}
                   disabled={approving}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
+                  className={inputClasses}
                 >
                   {VIDEO_MODELS.map((m) => (
                     <option key={m.value} value={m.value}>
@@ -444,10 +618,7 @@ export default function SceneDetailPage() {
                 </select>
               </div>
               <div>
-                <label
-                  htmlFor="duration"
-                  className="mb-1 block text-xs font-medium text-slate-400"
-                >
+                <label htmlFor="duration" className={labelClasses}>
                   Duracao
                 </label>
                 <select
@@ -455,7 +626,7 @@ export default function SceneDetailPage() {
                   value={duration}
                   onChange={(e) => setDuration(Number(e.target.value))}
                   disabled={approving}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
+                  className={inputClasses}
                 >
                   {DURATIONS.map((d) => (
                     <option key={d.value} value={d.value}>
@@ -465,10 +636,7 @@ export default function SceneDetailPage() {
                 </select>
               </div>
               <div>
-                <label
-                  htmlFor="preset"
-                  className="mb-1 block text-xs font-medium text-slate-400"
-                >
+                <label htmlFor="preset" className={labelClasses}>
                   Preset de Camera (opcional)
                 </label>
                 <select
@@ -476,7 +644,7 @@ export default function SceneDetailPage() {
                   value={preset}
                   onChange={(e) => setPreset(e.target.value)}
                   disabled={approving}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
+                  className={inputClasses}
                 >
                   <option value="">Nenhum</option>
                   {CAMERA_PRESETS.map((p) => (
@@ -498,7 +666,7 @@ export default function SceneDetailPage() {
             {/* Submit */}
             <button
               type="submit"
-              disabled={approving || selectedImageIndex === null}
+              disabled={approving || selectedStartIndex === null}
               className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {approving ? (
@@ -529,21 +697,33 @@ export default function SceneDetailPage() {
         </div>
       )}
 
-      {/* Approved Config (when approved or video_submitted) */}
-      {(scene.status === "approved" || scene.status === "video_submitted") && (
+      {/* ================================================================= */}
+      {/* APPROVED CONFIG                                                   */}
+      {/* ================================================================= */}
+      {isApprovedOrSubmitted && (
         <div className="rounded-xl border border-slate-800 bg-slate-900 p-6">
-          <h3 className="mb-4 text-lg font-semibold text-white">
-            Configuracao Aprovada
-          </h3>
+          <h3 className={sectionHeadingClasses}>Configuracao Aprovada</h3>
+
+          {/* Grid of config values */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <p className="text-xs font-medium text-slate-500">
-                Imagem Selecionada
+                Imagem Inicial Selecionada
               </p>
               <p className="mt-1 text-sm text-white">
                 Variacao {scene.approved_image_index}
               </p>
             </div>
+            {scene.end_frame_approved_index != null && (
+              <div>
+                <p className="text-xs font-medium text-slate-500">
+                  Imagem Final Selecionada
+                </p>
+                <p className="mt-1 text-sm text-white">
+                  Variacao {scene.end_frame_approved_index}
+                </p>
+              </div>
+            )}
             <div>
               <p className="text-xs font-medium text-slate-500">
                 Modelo de Video
@@ -565,6 +745,8 @@ export default function SceneDetailPage() {
               </p>
             </div>
           </div>
+
+          {/* Movement prompt */}
           {scene.movement_prompt && (
             <div className="mt-4">
               <p className="text-xs font-medium text-slate-500">
@@ -575,6 +757,52 @@ export default function SceneDetailPage() {
               </p>
             </div>
           )}
+
+          {/* Optimized movement prompt (if different) */}
+          {scene.optimized_movement_prompt &&
+            scene.optimized_movement_prompt !== scene.movement_prompt && (
+              <div className="mt-4">
+                <p className="text-xs font-medium text-slate-500">
+                  Prompt de Movimento (Otimizado)
+                </p>
+                <p className="mt-1 text-sm text-slate-300">
+                  {scene.optimized_movement_prompt}
+                </p>
+              </div>
+            )}
+
+          {/* End frame info */}
+          {scene.video_config.end_frame && (
+            <div className="mt-4">
+              <p className="text-xs font-medium text-slate-500">End Frame</p>
+              <p className="mt-1 text-sm text-slate-300">
+                Tipo: {scene.video_config.end_frame.type}
+              </p>
+            </div>
+          )}
+
+          {/* Frame preview for approved config */}
+          {scene.approved_image_index != null && (
+            <div className="mt-6">
+              <p className="mb-3 text-xs font-medium text-slate-500">
+                Preview dos Frames Aprovados
+              </p>
+              <FrameCompare
+                startImageUrl={
+                  scene.generated_images[scene.approved_image_index - 1]?.url ?? ""
+                }
+                endImageUrl={
+                  scene.end_frame_approved_index != null
+                    ? scene.end_frame_generated_images[
+                        scene.end_frame_approved_index - 1
+                      ]?.url ?? null
+                    : null
+                }
+              />
+            </div>
+          )}
+
+          {/* Request ID */}
           {scene.request_id && (
             <div className="mt-4">
               <p className="text-xs font-medium text-slate-500">Request ID</p>
@@ -586,16 +814,13 @@ export default function SceneDetailPage() {
         </div>
       )}
 
-      {/* Completed Video */}
+      {/* ================================================================= */}
+      {/* COMPLETED VIDEO                                                   */}
+      {/* ================================================================= */}
       {scene.status === "completed" && scene.video_url && (
         <div>
-          <h2 className="mb-4 text-lg font-semibold text-white">
-            Video Final
-          </h2>
-          <VideoPlayer
-            url={scene.video_url}
-            title={scene.original_prompt}
-          />
+          <h2 className={sectionHeadingClasses}>Video Final</h2>
+          <VideoPlayer url={scene.video_url} title={scene.original_prompt} />
         </div>
       )}
     </div>

@@ -33,6 +33,7 @@ export async function POST(
 
     const {
       image_index,
+      end_frame_index,
       movement_prompt,
       video_model,
       duration,
@@ -40,6 +41,7 @@ export async function POST(
       end_frame_url,
     } = body as {
       image_index: number;
+      end_frame_index?: number;
       movement_prompt: string;
       video_model?: string;
       duration?: number;
@@ -71,8 +73,27 @@ export async function POST(
       );
     }
 
+    // Derive end frame URL from scene data or explicit URL
+    let endFrameConfig: { type: string; image_url: string } | null = null;
+
+    if (end_frame_index && scene.end_frame_generated_images?.length) {
+      if (end_frame_index < 1 || end_frame_index > scene.end_frame_generated_images.length) {
+        return NextResponse.json(
+          { error: `end_frame_index must be between 1 and ${scene.end_frame_generated_images.length}` },
+          { status: 400 }
+        );
+      }
+      endFrameConfig = {
+        type: "image_url",
+        image_url: scene.end_frame_generated_images[end_frame_index - 1].url,
+      };
+    } else if (end_frame_url) {
+      endFrameConfig = { type: "image_url", image_url: end_frame_url };
+    }
+
     const updated = await updateScene(id, {
       approved_image_index: image_index,
+      end_frame_approved_index: end_frame_index ?? null,
       movement_prompt: movement_prompt,
       optimized_movement_prompt: movement_prompt,
       video_config: {
@@ -80,9 +101,7 @@ export async function POST(
         duration: duration ?? 5,
         resolution: "1080p",
         preset: preset ?? null,
-        end_frame: end_frame_url
-          ? { type: "image_url", image_url: end_frame_url }
-          : null,
+        end_frame: endFrameConfig,
       },
       status: "approved",
     });

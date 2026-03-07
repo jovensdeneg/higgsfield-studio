@@ -18,8 +18,16 @@ export interface Scene {
   model_image: string;
   generated_images: { url: string; metadata?: Record<string, unknown> }[];
   approved_image_index: number | null;
+  reference_images: string[];
+  character_id: string | null;
   movement_prompt: string | null;
   optimized_movement_prompt: string | null;
+  end_frame_prompt: string | null;
+  end_frame_optimized_prompt: string | null;
+  end_frame_model_image: string | null;
+  end_frame_generated_images: { url: string; metadata?: Record<string, unknown> }[];
+  end_frame_approved_index: number | null;
+  end_frame_reference_images: string[];
   video_config: {
     model: string;
     duration: number;
@@ -62,6 +70,21 @@ export interface Batch {
     percent_complete: number;
   };
   last_check?: string;
+}
+
+export interface CharacterPhoto {
+  url: string;
+  filename: string;
+  uploaded_at: string;
+}
+
+export interface Character {
+  character_id: string;
+  name: string;
+  description: string;
+  photos: CharacterPhoto[];
+  created_at: string;
+  updated_at: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -151,7 +174,18 @@ export async function createScene(scene: Scene): Promise<Scene> {
 export async function getScene(sceneId: string): Promise<Scene | null> {
   const raw = await kv_get(`scene:${sceneId}`);
   if (!raw) return null;
-  return typeof raw === "string" ? JSON.parse(raw) : (raw as unknown as Scene);
+  const scene = typeof raw === "string" ? JSON.parse(raw) : (raw as unknown as Scene);
+  const defaults = {
+    reference_images: [],
+    character_id: null,
+    end_frame_prompt: null,
+    end_frame_optimized_prompt: null,
+    end_frame_model_image: null,
+    end_frame_generated_images: [],
+    end_frame_approved_index: null,
+    end_frame_reference_images: [],
+  };
+  return { ...defaults, ...scene };
 }
 
 export async function listScenes(): Promise<Scene[]> {
@@ -231,6 +265,68 @@ export async function getLatestBatch(): Promise<Batch | null> {
 
 async function getBatchIds(): Promise<string[]> {
   const raw = await kv_get("batch_ids");
+  if (!raw) return [];
+  return typeof raw === "string" ? JSON.parse(raw) : (raw as unknown as string[]);
+}
+
+// ---------------------------------------------------------------------------
+// Character CRUD
+// ---------------------------------------------------------------------------
+
+export async function createCharacter(char: Character): Promise<Character> {
+  await kv_set(`character:${char.character_id}`, JSON.stringify(char));
+  // Manter índice de IDs
+  const ids = await getCharacterIds();
+  if (!ids.includes(char.character_id)) {
+    ids.push(char.character_id);
+    await kv_set("character_ids", JSON.stringify(ids));
+  }
+  return char;
+}
+
+export async function getCharacter(charId: string): Promise<Character | null> {
+  const raw = await kv_get(`character:${charId}`);
+  if (!raw) return null;
+  return typeof raw === "string" ? JSON.parse(raw) : (raw as unknown as Character);
+}
+
+export async function listCharacters(): Promise<Character[]> {
+  const ids = await getCharacterIds();
+  const characters: Character[] = [];
+  for (const id of ids) {
+    const char = await getCharacter(id);
+    if (char) characters.push(char);
+  }
+  return characters.sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+}
+
+export async function updateCharacter(
+  charId: string,
+  updates: Partial<Character>
+): Promise<Character> {
+  const char = await getCharacter(charId);
+  if (!char) throw new Error(`Character '${charId}' not found`);
+
+  const updated = {
+    ...char,
+    ...updates,
+    updated_at: new Date().toISOString(),
+  };
+  await kv_set(`character:${charId}`, JSON.stringify(updated));
+  return updated;
+}
+
+export async function deleteCharacter(charId: string): Promise<void> {
+  await kv_del(`character:${charId}`);
+  const ids = await getCharacterIds();
+  const filtered = ids.filter((id) => id !== charId);
+  await kv_set("character_ids", JSON.stringify(filtered));
+}
+
+export async function getCharacterIds(): Promise<string[]> {
+  const raw = await kv_get("character_ids");
   if (!raw) return [];
   return typeof raw === "string" ? JSON.parse(raw) : (raw as unknown as string[]);
 }
