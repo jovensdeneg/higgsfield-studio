@@ -28,12 +28,15 @@ Rules:
 // Provider: Google Gemini (FREE tier — recommended)
 // ---------------------------------------------------------------------------
 
-async function callGemini(
+// Models to try in order — from newest stable to oldest
+const GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-1.5-flash"];
+
+async function callGeminiModel(
   apiKey: string,
+  model: string,
   systemPrompt: string,
   userPrompt: string
 ): Promise<{ ok: true; text: string; provider: string } | { ok: false; error: string }> {
-  const model = "gemini-2.0-flash";
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
   const response = await fetch(url, {
@@ -51,7 +54,7 @@ async function callGemini(
 
   if (!response.ok) {
     const errText = await response.text().catch(() => "");
-    let errorMessage = `Gemini error (${response.status})`;
+    let errorMessage = `Gemini ${model} error (${response.status})`;
     try {
       const errJson = JSON.parse(errText);
       errorMessage = errJson.error?.message ?? errorMessage;
@@ -62,9 +65,27 @@ async function callGemini(
   const data = await response.json();
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "";
   if (!text) {
-    return { ok: false, error: "Gemini returned empty response" };
+    return { ok: false, error: `Gemini ${model} returned empty response` };
   }
   return { ok: true, text, provider: `gemini-${model}` };
+}
+
+async function callGemini(
+  apiKey: string,
+  systemPrompt: string,
+  userPrompt: string
+): Promise<{ ok: true; text: string; provider: string } | { ok: false; error: string }> {
+  const errors: string[] = [];
+  for (const model of GEMINI_MODELS) {
+    console.log(`Trying Gemini model: ${model}`);
+    const result = await callGeminiModel(apiKey, model, systemPrompt, userPrompt);
+    if (result.ok) return result;
+    console.error(`Gemini ${model} failed:`, result.error);
+    errors.push(result.error);
+    // If 403/401 (bad key), skip remaining models
+    if (result.error.includes("401") || result.error.includes("403")) break;
+  }
+  return { ok: false, error: errors.join(" | ") };
 }
 
 // ---------------------------------------------------------------------------
