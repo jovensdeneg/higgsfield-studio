@@ -204,12 +204,20 @@ export async function POST(request: NextRequest) {
     const allErrors = result.errors.join(" | ");
     const isQuotaError = allErrors.includes("quota") || allErrors.includes("exceeded");
 
-    let userMessage = `Falha ao melhorar prompt: ${allErrors}`;
-    if (isQuotaError) {
+    // Show which providers were attempted for debugging
+    const geminiConfigured = !!process.env.GOOGLE_AI_KEY;
+    const openaiConfigured = !!process.env.OPENAI_API_KEY;
+    const providersInfo = `[Gemini: ${geminiConfigured ? "configurado" : "nao encontrado"}, OpenAI: ${openaiConfigured ? "configurado" : "nao encontrado"}]`;
+
+    let userMessage = `Falha ao melhorar prompt ${providersInfo}: ${allErrors}`;
+    if (!geminiConfigured && isQuotaError) {
       userMessage =
-        "Sua chave da OpenAI esta sem creditos (billing da API e separado da assinatura do ChatGPT). " +
-        "Solucao rapida: adicione GOOGLE_AI_KEY (gratuito) nas variaveis de ambiente da Vercel. " +
-        "Gere a chave em: https://aistudio.google.com/app/apikey";
+        `GOOGLE_AI_KEY nao encontrada nas variaveis de ambiente. ` +
+        `Verifique se o nome esta exatamente "GOOGLE_AI_KEY" (sem espacos) e faca um Redeploy. ` +
+        `Gere a chave gratuita em: https://aistudio.google.com/app/apikey`;
+    } else if (geminiConfigured && isQuotaError) {
+      userMessage =
+        `Gemini configurado mas falhou: ${allErrors}. Verifique se a chave GOOGLE_AI_KEY esta correta.`;
     }
 
     return NextResponse.json({ error: userMessage }, { status: 502 });
