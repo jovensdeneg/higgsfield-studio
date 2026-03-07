@@ -24,19 +24,65 @@ Rules:
 - Focus on MOTION and CHANGE over time — static descriptions are useless for video
 - Be cinematic — think like a director describing a shot`;
 
-// Models to try in order of preference (fallback chain)
-const MODELS_TO_TRY = ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"];
+// ---------------------------------------------------------------------------
+// Provider: Google Gemini (FREE tier — recommended)
+// ---------------------------------------------------------------------------
+
+async function callGemini(
+  apiKey: string,
+  systemPrompt: string,
+  userPrompt: string
+): Promise<{ ok: true; text: string; provider: string } | { ok: false; error: string }> {
+  const model = "gemini-2.0-flash";
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      contents: [{ parts: [{ text: userPrompt }] }],
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: 500,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text().catch(() => "");
+    let errorMessage = `Gemini error (${response.status})`;
+    try {
+      const errJson = JSON.parse(errText);
+      errorMessage = errJson.error?.message ?? errorMessage;
+    } catch { /* use default */ }
+    return { ok: false, error: errorMessage };
+  }
+
+  const data = await response.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "";
+  if (!text) {
+    return { ok: false, error: "Gemini returned empty response" };
+  }
+  return { ok: true, text, provider: `gemini-${model}` };
+}
+
+// ---------------------------------------------------------------------------
+// Provider: OpenAI (requires billing)
+// ---------------------------------------------------------------------------
+
+const OPENAI_MODELS = ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"];
 
 async function callOpenAI(
   apiKey: string,
   model: string,
   systemPrompt: string,
   userPrompt: string
-): Promise<{ ok: true; text: string } | { ok: false; status: number; error: string }> {
+): Promise<{ ok: true; text: string; provider: string } | { ok: false; status: number; error: string }> {
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${apiKey.trim()}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -62,8 +108,71 @@ async function callOpenAI(
 
   const data = await response.json();
   const text = data.choices?.[0]?.message?.content?.trim() ?? "";
-  return { ok: true, text };
+  if (!text) {
+    return { ok: false, status: 200, error: "OpenAI returned empty response" };
+  }
+  return { ok: true, text, provider: `openai-${model}` };
 }
+
+// ---------------------------------------------------------------------------
+// Try all available providers in order: Gemini (free) → OpenAI (paid)
+// ---------------------------------------------------------------------------
+
+async function tryAllProviders(
+  systemPrompt: string,
+  userPrompt: string
+): Promise<
+  | { ok: true; text: string; provider: string }
+  | { ok: false; errors: string[] }
+> {
+  const errors: string[] = [];
+
+  // 1. Try Google Gemini first (free tier, no billing needed)
+  const geminiKey = process.env.GOOGLE_AI_KEY;
+  if (geminiKey) {
+    console.log("Trying Google Gemini (free tier)...");
+    const result = await callGemini(geminiKey.trim(), systemPrompt, userPrompt);
+    if (result.ok) {
+      return result;
+    }
+    console.error("Gemini failed:", result.error);
+    errors.push(`Gemini: ${result.error}`);
+  }
+
+  // 2. Try OpenAI models (requires billing)
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (openaiKey) {
+    for (const model of OPENAI_MODELS) {
+      console.log(`Trying OpenAI ${model}...`);
+      const result = await callOpenAI(openaiKey.trim(), model, systemPrompt, userPrompt);
+
+      if (result.ok) {
+        return result;
+      }
+
+      console.error(`OpenAI ${model} failed:`, result.error);
+      errors.push(`${model}: ${result.error}`);
+
+      // If 401 (bad key) or 429/quota, skip remaining OpenAI models
+      if (result.status === 401 || result.status === 429) {
+        break;
+      }
+    }
+  }
+
+  // No providers configured at all
+  if (!geminiKey && !openaiKey) {
+    errors.push(
+      "Nenhuma chave de IA configurada. Adicione GOOGLE_AI_KEY (gratuito) ou OPENAI_API_KEY nas variaveis de ambiente da Vercel."
+    );
+  }
+
+  return { ok: false, errors };
+}
+
+// ---------------------------------------------------------------------------
+// Route handler
+// ---------------------------------------------------------------------------
 
 export async function POST(request: NextRequest) {
   try {
@@ -80,50 +189,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: "OPENAI_API_KEY nao configurada. Adicione nas variaveis de ambiente da Vercel." },
-        { status: 500 }
-      );
-    }
-
     const systemPrompt = context === "image" ? IMAGE_SYSTEM_PROMPT : VIDEO_SYSTEM_PROMPT;
 
-    // Try each model in the fallback chain
-    const errors: string[] = [];
+    const result = await tryAllProviders(systemPrompt, prompt);
 
-    for (const model of MODELS_TO_TRY) {
-      console.log(`Trying model: ${model}`);
-      const result = await callOpenAI(apiKey, model, systemPrompt, prompt);
-
-      if (result.ok && result.text) {
-        return NextResponse.json({
-          improved_prompt: result.text,
-          model_used: model,
-        });
-      }
-
-      if (!result.ok) {
-        console.error(`Model ${model} failed:`, result.error);
-        errors.push(`${model}: ${result.error}`);
-
-        // If it's a 401 (bad key), no point trying other models
-        if (result.status === 401) {
-          return NextResponse.json(
-            { error: `Chave da OpenAI invalida ou expirada: ${result.error}` },
-            { status: 502 }
-          );
-        }
-      }
+    if (result.ok) {
+      return NextResponse.json({
+        improved_prompt: result.text,
+        model_used: result.provider,
+      });
     }
 
-    // All models failed — show all errors
-    const allErrors = errors.join(" | ");
-    return NextResponse.json(
-      { error: `Todos os modelos falharam: ${allErrors}` },
-      { status: 502 }
-    );
+    // Build helpful error message
+    const allErrors = result.errors.join(" | ");
+    const isQuotaError = allErrors.includes("quota") || allErrors.includes("exceeded");
+
+    let userMessage = `Falha ao melhorar prompt: ${allErrors}`;
+    if (isQuotaError) {
+      userMessage =
+        "Sua chave da OpenAI esta sem creditos (billing da API e separado da assinatura do ChatGPT). " +
+        "Solucao rapida: adicione GOOGLE_AI_KEY (gratuito) nas variaveis de ambiente da Vercel. " +
+        "Gere a chave em: https://aistudio.google.com/app/apikey";
+    }
+
+    return NextResponse.json({ error: userMessage }, { status: 502 });
   } catch (err) {
     console.error("Improve prompt error:", err);
     return NextResponse.json(

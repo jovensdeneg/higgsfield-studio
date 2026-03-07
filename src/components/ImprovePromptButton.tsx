@@ -12,11 +12,13 @@ interface ImprovePromptButtonProps {
 export default function ImprovePromptButton({ prompt, context, onImproved, disabled }: ImprovePromptButtonProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [provider, setProvider] = useState<string | null>(null);
 
   async function handleImprove() {
     if (!prompt.trim() || loading) return;
     setLoading(true);
     setError(null);
+    setProvider(null);
     try {
       const res = await fetch("/api/improve-prompt", {
         method: "POST",
@@ -26,6 +28,7 @@ export default function ImprovePromptButton({ prompt, context, onImproved, disab
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.improved_prompt) {
         onImproved(data.improved_prompt);
+        setProvider(data.model_used ?? null);
       } else {
         setError(data.error || `Erro ${res.status}: Falha ao melhorar prompt`);
       }
@@ -53,8 +56,23 @@ export default function ImprovePromptButton({ prompt, context, onImproved, disab
         )}
         {loading ? "Melhorando..." : "\u2728 Melhorar com IA"}
       </button>
+      {provider && (
+        <p className="text-[10px] text-emerald-500/70">via {provider}</p>
+      )}
       {error && (
-        <p className="max-w-xs text-[10px] text-red-400">{error}</p>
+        <div className="max-w-sm rounded-md bg-red-950/50 border border-red-900/50 p-2">
+          <p className="text-[11px] text-red-400 leading-relaxed">{error}</p>
+          {error.includes("aistudio.google.com") && (
+            <a
+              href="https://aistudio.google.com/app/apikey"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 inline-block text-[11px] text-emerald-400 underline hover:text-emerald-300"
+            >
+              Gerar chave gratuita do Gemini →
+            </a>
+          )}
+        </div>
       )}
     </div>
   );
