@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import CharacterSelector from "@/components/CharacterSelector";
@@ -20,13 +20,18 @@ interface BatchSceneResult {
 }
 
 // ---------------------------------------------------------------------------
-// Image models (same as FrameSection)
+// Image models per provider
 // ---------------------------------------------------------------------------
 
-const IMAGE_MODELS = [
+const HF_IMAGE_MODELS = [
   { value: "nano-banana-pro", label: "Nano Banana Pro" },
   { value: "flux-pro-kontext-max", label: "Flux Pro Kontext Max" },
   { value: "seedream-v4", label: "Seedream v4" },
+];
+
+const GOOGLE_IMAGE_MODELS = [
+  { value: "imagen-4.0", label: "Imagen 4.0" },
+  { value: "imagen-4.0-fast", label: "Imagen 4.0 Fast" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -36,6 +41,12 @@ const IMAGE_MODELS = [
 export default function GeneratePage() {
   const router = useRouter();
 
+  // Provider
+  const [provider, setProvider] = useState<"higgsfield" | "google">("google");
+
+  // Derived model list
+  const imageModels = provider === "google" ? GOOGLE_IMAGE_MODELS : HF_IMAGE_MODELS;
+
   // Tab mode
   const [mode, setMode] = useState<GenerateMode>("standard");
 
@@ -44,20 +55,20 @@ export default function GeneratePage() {
 
   // Start frame (required)
   const [startPrompt, setStartPrompt] = useState("");
-  const [startModel, setStartModel] = useState("nano-banana-pro");
+  const [startModel, setStartModel] = useState("imagen-4.0");
   const [startVariations, setStartVariations] = useState(3);
   const [startRefs, setStartRefs] = useState<string[]>([]);
 
   // End frame (optional)
   const [showEndFrame, setShowEndFrame] = useState(false);
   const [endPrompt, setEndPrompt] = useState("");
-  const [endModel, setEndModel] = useState("nano-banana-pro");
+  const [endModel, setEndModel] = useState("imagen-4.0");
   const [endVariations, setEndVariations] = useState(3);
   const [endRefs, setEndRefs] = useState<string[]>([]);
 
   // ── Batch mode state ──
   const [batchCharacterId, setBatchCharacterId] = useState<string | null>(null);
-  const [batchModel, setBatchModel] = useState("nano-banana-pro");
+  const [batchModel, setBatchModel] = useState("imagen-4.0");
   const [batchText, setBatchText] = useState("");
   const [batchLoading, setBatchLoading] = useState(false);
   const [batchCurrentScene, setBatchCurrentScene] = useState(0);
@@ -69,6 +80,20 @@ export default function GeneratePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // ── Reset models when provider changes ──
+  useEffect(() => {
+    const defaultModel = provider === "google" ? "imagen-4.0" : "nano-banana-pro";
+    setStartModel(defaultModel);
+    setEndModel(defaultModel);
+    setBatchModel(defaultModel);
+  }, [provider]);
+
+  // ── Reference image warning for Google provider ──
+  const referenceImageWarning =
+    provider === "google"
+      ? "Imagen não suporta imagens de referência. Personagens serão usados apenas para vídeos (Veo)."
+      : null;
+
   // ── Batch text parsing (live preview) ──
   const parsePreview: ParseResult = useMemo(
     () => parseBatchText(batchText),
@@ -78,9 +103,10 @@ export default function GeneratePage() {
   // ── Standard mode handlers ──
 
   function handleRemoveEndFrame() {
+    const defaultModel = provider === "google" ? "imagen-4.0" : "nano-banana-pro";
     setShowEndFrame(false);
     setEndPrompt("");
-    setEndModel("nano-banana-pro");
+    setEndModel(defaultModel);
     setEndVariations(3);
     setEndRefs([]);
   }
@@ -104,6 +130,7 @@ export default function GeneratePage() {
       num_variations: startVariations,
       reference_images: startRefs,
       character_id: characterId,
+      provider: provider,
     };
 
     if (includeEndFrame) {
@@ -176,6 +203,7 @@ export default function GeneratePage() {
           model: batchModel,
           num_variations: 2,
           character_id: batchCharacterId,
+          provider: provider,
         };
 
         if (scene.endFrame) {
@@ -242,6 +270,41 @@ export default function GeneratePage() {
         </p>
       </div>
 
+      {/* Provider selector */}
+      <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4">
+        <label className="mb-2 block text-xs font-medium text-slate-400 uppercase tracking-wide">Provedor</label>
+        <div className="flex gap-1 rounded-lg bg-slate-800 p-1">
+          <button
+            type="button"
+            onClick={() => setProvider("google")}
+            className={`flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-colors ${
+              provider === "google"
+                ? "bg-emerald-600 text-white shadow-sm"
+                : "text-slate-400 hover:text-white"
+            }`}
+          >
+            Google (Imagen + Veo)
+          </button>
+          <button
+            type="button"
+            onClick={() => setProvider("higgsfield")}
+            className={`flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-colors ${
+              provider === "higgsfield"
+                ? "bg-emerald-600 text-white shadow-sm"
+                : "text-slate-400 hover:text-white"
+            }`}
+          >
+            Higgsfield
+          </button>
+        </div>
+        {provider === "google" && (
+          <p className="mt-2 text-xs text-emerald-400/70">Usando GOOGLE_AI_KEY + Vercel Blob</p>
+        )}
+        {provider === "higgsfield" && (
+          <p className="mt-2 text-xs text-slate-500">Requer HF_API_KEY + HF_API_SECRET com créditos ativos</p>
+        )}
+      </div>
+
       {/* Tab Switcher */}
       <div className="flex gap-1 rounded-lg bg-slate-900 p-1">
         <button
@@ -280,6 +343,9 @@ export default function GeneratePage() {
               onSelect={setCharacterId}
               disabled={loading}
             />
+            {provider === "google" && (
+              <p className="mt-1 text-xs text-amber-400/80">Imagen não suporta imagens de referência. Personagens serão usados apenas para vídeos (Veo).</p>
+            )}
           </div>
 
           {/* Start Frame (required) */}
@@ -294,6 +360,8 @@ export default function GeneratePage() {
             referenceImages={startRefs}
             onReferenceImagesChange={setStartRefs}
             disabled={loading}
+            imageModels={imageModels}
+            referenceImageWarning={referenceImageWarning}
           />
 
           {/* End Frame (optional, collapsible) */}
@@ -332,6 +400,8 @@ export default function GeneratePage() {
                 referenceImages={endRefs}
                 onReferenceImagesChange={setEndRefs}
                 disabled={loading}
+                imageModels={imageModels}
+                referenceImageWarning={referenceImageWarning}
               />
               <button
                 type="button"
@@ -419,6 +489,9 @@ export default function GeneratePage() {
               onSelect={setBatchCharacterId}
               disabled={batchLoading}
             />
+            {provider === "google" && (
+              <p className="mt-1 text-xs text-amber-400/80">Imagen não suporta imagens de referência. Personagens serão usados apenas para vídeos (Veo).</p>
+            )}
           </div>
 
           {/* Model selector */}
@@ -432,7 +505,7 @@ export default function GeneratePage() {
               disabled={batchLoading}
               className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-white focus:border-emerald-500 focus:outline-none disabled:opacity-50"
             >
-              {IMAGE_MODELS.map((m) => (
+              {imageModels.map((m) => (
                 <option key={m.value} value={m.value}>
                   {m.label}
                 </option>

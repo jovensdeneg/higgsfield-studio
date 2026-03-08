@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateImage } from "@/lib/higgsfield";
+import { generateImageGoogle } from "@/lib/google-ai";
 import {
   createScene,
   listScenes,
@@ -53,6 +54,7 @@ export async function POST(request: NextRequest) {
       end_frame_model,
       end_frame_num_variations,
       end_frame_reference_images,
+      provider,
     } = body as {
       prompt: string;
       model?: string;
@@ -63,7 +65,10 @@ export async function POST(request: NextRequest) {
       end_frame_model?: string;
       end_frame_num_variations?: number;
       end_frame_reference_images?: string[];
+      provider?: "higgsfield" | "google";
     };
+
+    const useGoogle = provider === "google";
 
     if (!prompt || typeof prompt !== "string") {
       return NextResponse.json(
@@ -89,11 +94,9 @@ export async function POST(request: NextRequest) {
     // Generate START FRAME images
     const generatedImages: { url: string; metadata?: Record<string, unknown> }[] = [];
     for (let i = 0; i < variations; i++) {
-      const result = await generateImage(
-        prompt,
-        imageModel,
-        allRefs.length > 0 ? allRefs : undefined
-      );
+      const result = useGoogle
+        ? await generateImageGoogle(prompt, imageModel)
+        : await generateImage(prompt, imageModel, allRefs.length > 0 ? allRefs : undefined);
       generatedImages.push({ url: result.url, metadata: result.raw });
     }
 
@@ -114,11 +117,9 @@ export async function POST(request: NextRequest) {
       }
 
       for (let i = 0; i < efVariations; i++) {
-        const result = await generateImage(
-          end_frame_prompt.trim(),
-          efModel,
-          endRefs.length > 0 ? endRefs : undefined
-        );
+        const result = useGoogle
+          ? await generateImageGoogle(end_frame_prompt.trim(), efModel)
+          : await generateImage(end_frame_prompt.trim(), efModel, endRefs.length > 0 ? endRefs : undefined);
         endFrameImages.push({ url: result.url, metadata: result.raw });
       }
     }
@@ -143,12 +144,13 @@ export async function POST(request: NextRequest) {
       end_frame_approved_index: null,
       end_frame_reference_images: end_frame_reference_images ?? [],
       video_config: {
-        model: "kling-3.0",
-        duration: 5,
+        model: useGoogle ? "veo-3.1" : "kling-3.0",
+        duration: useGoogle ? 8 : 5,
         resolution: "1080p",
         preset: null,
         end_frame: null,
       },
+      provider: useGoogle ? "google" : "higgsfield",
       status: "images_generated",
       request_id: null,
       video_url: null,

@@ -14,6 +14,7 @@ import ImprovePromptButton from "@/components/ImprovePromptButton";
 
 interface Scene {
   scene_id: string;
+  provider?: "higgsfield" | "google";
   original_prompt: string;
   optimized_prompt: string;
   model_image: string;
@@ -47,17 +48,22 @@ interface Scene {
 // Constants
 // ---------------------------------------------------------------------------
 
-const VIDEO_MODELS = [
+const HIGGSFIELD_VIDEO_MODELS = [
   { value: "kling-3.0", label: "Kling 3.0" },
   { value: "kling-o1", label: "Kling O1" },
   { value: "kling-2.5-turbo", label: "Kling 2.5 Turbo" },
+  { value: "dop-turbo", label: "DOP Turbo" },
+  { value: "dop-lite", label: "DOP Lite" },
+  { value: "dop-preview", label: "DOP Preview" },
 ];
 
-const DURATIONS = [
-  { value: 5, label: "5 segundos" },
-  { value: 10, label: "10 segundos" },
-  { value: 15, label: "15 segundos" },
+const GOOGLE_VIDEO_MODELS = [
+  { value: "veo-3.1", label: "Veo 3.1" },
+  { value: "veo-3.1-fast", label: "Veo 3.1 Fast" },
 ];
+
+const HIGGSFIELD_DURATIONS = [5, 10, 15];
+const GOOGLE_DURATIONS = [4, 6, 8];
 
 const CAMERA_PRESETS = [
   "Dolly In",
@@ -135,6 +141,11 @@ export default function SceneDetailPage() {
   const isImagesGenerated = scene?.status === "images_generated";
   const isApprovedOrSubmitted =
     scene?.status === "approved" || scene?.status === "video_submitted";
+
+  // Provider-aware video config options
+  const isGoogle = scene?.provider === "google";
+  const videoModels = isGoogle ? GOOGLE_VIDEO_MODELS : HIGGSFIELD_VIDEO_MODELS;
+  const videoDurations = isGoogle ? GOOGLE_DURATIONS : HIGGSFIELD_DURATIONS;
 
   // Resolved selected image URLs for preview
   const startImageUrl =
@@ -319,6 +330,13 @@ export default function SceneDetailPage() {
           <div className="mb-2 flex items-center gap-3">
             <h1 className="text-2xl font-bold text-white">{scene.scene_id}</h1>
             <StatusBadge status={scene.status} />
+            <span className={`rounded px-2 py-0.5 text-[10px] font-medium ${
+              scene.provider === "google"
+                ? "bg-blue-900/50 text-blue-400"
+                : "bg-amber-900/50 text-amber-400"
+            }`}>
+              {scene.provider === "google" ? "Google" : "Higgsfield"}
+            </span>
           </div>
           <p className="max-w-2xl text-sm text-slate-400">{scene.original_prompt}</p>
           <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-slate-500">
@@ -598,7 +616,7 @@ export default function SceneDetailPage() {
             </div>
 
             {/* Video config row */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className={`grid grid-cols-1 gap-4 ${isGoogle ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}>
               <div>
                 <label htmlFor="video-model" className={labelClasses}>
                   Modelo de Video
@@ -610,7 +628,7 @@ export default function SceneDetailPage() {
                   disabled={approving}
                   className={inputClasses}
                 >
-                  {VIDEO_MODELS.map((m) => (
+                  {videoModels.map((m) => (
                     <option key={m.value} value={m.value}>
                       {m.label}
                     </option>
@@ -628,13 +646,14 @@ export default function SceneDetailPage() {
                   disabled={approving}
                   className={inputClasses}
                 >
-                  {DURATIONS.map((d) => (
-                    <option key={d.value} value={d.value}>
-                      {d.label}
+                  {videoDurations.map((d) => (
+                    <option key={d} value={d}>
+                      {d} segundos
                     </option>
                   ))}
                 </select>
               </div>
+              {!isGoogle && (
               <div>
                 <label htmlFor="preset" className={labelClasses}>
                   Preset de Camera (opcional)
@@ -654,6 +673,7 @@ export default function SceneDetailPage() {
                   ))}
                 </select>
               </div>
+              )}
             </div>
 
             {/* Error */}

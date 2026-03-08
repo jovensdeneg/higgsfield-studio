@@ -3,7 +3,7 @@
 import ImprovePromptButton from "./ImprovePromptButton";
 import ReferenceImageUpload from "./ReferenceImageUpload";
 
-const IMAGE_MODELS = [
+const DEFAULT_IMAGE_MODELS = [
   { value: "nano-banana-pro", label: "Nano Banana Pro" },
   { value: "flux-pro-kontext-max", label: "Flux Pro Kontext Max" },
   { value: "seedream-v4", label: "Seedream v4" },
@@ -20,12 +20,16 @@ interface FrameSectionProps {
   referenceImages: string[];
   onReferenceImagesChange: (urls: string[]) => void;
   disabled?: boolean;
+  imageModels?: { value: string; label: string }[];
+  referenceImageWarning?: string | null;
 }
 
 export default function FrameSection({
   title, prompt, onPromptChange, model, onModelChange,
   numVariations, onNumVariationsChange, referenceImages, onReferenceImagesChange, disabled,
+  imageModels, referenceImageWarning,
 }: FrameSectionProps) {
+  const models = imageModels ?? DEFAULT_IMAGE_MODELS;
   return (
     <div className="space-y-4 rounded-xl border border-slate-800 bg-slate-900/50 p-5">
       <h3 className="text-sm font-semibold text-white">{title}</h3>
@@ -57,6 +61,9 @@ export default function FrameSection({
         onImagesChange={onReferenceImagesChange}
         disabled={disabled}
       />
+      {referenceImageWarning && (
+        <p className="mt-1 text-xs text-amber-400/80">{referenceImageWarning}</p>
+      )}
 
       {/* Model + Variations row */}
       <div className="grid grid-cols-2 gap-4">
@@ -68,7 +75,7 @@ export default function FrameSection({
             disabled={disabled}
             className="w-full rounded-lg border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
           >
-            {IMAGE_MODELS.map((m) => (
+            {models.map((m) => (
               <option key={m.value} value={m.value}>{m.label}</option>
             ))}
           </select>

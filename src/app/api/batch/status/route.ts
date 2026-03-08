@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { checkStatus } from "@/lib/higgsfield";
-import { getLatestBatch, saveBatch } from "@/lib/store";
+import { checkStatusGoogle } from "@/lib/google-ai";
+import { getLatestBatch, saveBatch, getScene } from "@/lib/store";
 
 /**
  * GET /api/batch/status
@@ -30,7 +31,12 @@ export async function GET() {
       }
 
       try {
-        const status = await checkStatus(job.request_id);
+        // Determine provider from the scene
+        const scene = await getScene(job.scene_id);
+        const isGoogle = scene?.provider === "google";
+        const status = isGoogle
+          ? await checkStatusGoogle(job.request_id)
+          : await checkStatus(job.request_id);
         job.status = status.status;
 
         if (status.status === "completed") {

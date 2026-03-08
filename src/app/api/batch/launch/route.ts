@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { submitVideo } from "@/lib/higgsfield";
+import { submitVideoGoogle } from "@/lib/google-ai";
 import {
   getApprovedScenes,
   updateScene,
@@ -60,14 +61,23 @@ export async function POST(request: NextRequest) {
       }
 
       try {
-        const submission = await submitVideo({
-          prompt: scene.optimized_movement_prompt ?? scene.movement_prompt ?? "",
-          startImageUrl: startImage,
-          endImageUrl: scene.video_config.end_frame?.image_url,
-          model: scene.video_config.model,
-          duration: scene.video_config.duration,
-          preset: scene.video_config.preset ?? undefined,
-        });
+        const isGoogle = scene.provider === "google";
+        const submission = isGoogle
+          ? await submitVideoGoogle({
+              prompt: scene.optimized_movement_prompt ?? scene.movement_prompt ?? "",
+              startImageUrl: startImage,
+              endImageUrl: scene.video_config.end_frame?.image_url,
+              model: scene.video_config.model,
+              duration: scene.video_config.duration,
+            })
+          : await submitVideo({
+              prompt: scene.optimized_movement_prompt ?? scene.movement_prompt ?? "",
+              startImageUrl: startImage,
+              endImageUrl: scene.video_config.end_frame?.image_url,
+              model: scene.video_config.model,
+              duration: scene.video_config.duration,
+              preset: scene.video_config.preset ?? undefined,
+            });
 
         jobs.push({
           scene_id: scene.scene_id,

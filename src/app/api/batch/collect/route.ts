@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getResult } from "@/lib/higgsfield";
-import { getLatestBatch, saveBatch, updateScene } from "@/lib/store";
+import { getResultGoogle } from "@/lib/google-ai";
+import { getLatestBatch, saveBatch, updateScene, getScene } from "@/lib/store";
 
 /**
  * POST /api/batch/collect
@@ -47,8 +48,14 @@ export async function POST(request: NextRequest) {
       }
 
       try {
-        const data = await getResult(job.request_id);
-        const status = (data.status as string) ?? "unknown";
+        const scene = await getScene(job.scene_id);
+        const isGoogle = scene?.provider === "google";
+        const data = isGoogle
+          ? await getResultGoogle(job.request_id)
+          : await getResult(job.request_id);
+        const status = isGoogle
+          ? (data.done ? "completed" : "in_progress")
+          : ((data.status as string) ?? "unknown");
 
         let videoUrl: string | null = null;
 

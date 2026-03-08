@@ -4,11 +4,22 @@ import { useState, useRef } from "react";
 import ImprovePromptButton from "@/components/ImprovePromptButton";
 import VideoPlayer from "@/components/VideoPlayer";
 
-const VIDEO_MODELS = [
+const HIGGSFIELD_VIDEO_MODELS = [
   { value: "kling-3.0", label: "Kling 3.0" },
   { value: "kling-o1", label: "Kling O1" },
   { value: "kling-2.5-turbo", label: "Kling 2.5 Turbo" },
+  { value: "dop-turbo", label: "DOP Turbo" },
+  { value: "dop-lite", label: "DOP Lite" },
+  { value: "dop-preview", label: "DOP Preview" },
 ];
+
+const GOOGLE_VIDEO_MODELS = [
+  { value: "veo-3.1", label: "Veo 3.1" },
+  { value: "veo-3.1-fast", label: "Veo 3.1 Fast" },
+];
+
+const HIGGSFIELD_DURATIONS = [5, 10, 15];
+const GOOGLE_DURATIONS = [4, 6, 8];
 
 const CAMERA_PRESETS = [
   "Dolly In", "Dolly Out", "Dolly Left", "Dolly Right",
@@ -19,13 +30,14 @@ const CAMERA_PRESETS = [
 ];
 
 export default function VideoSubmitPage() {
+  const [provider, setProvider] = useState<"higgsfield" | "google">("google");
   const [startImageUrl, setStartImageUrl] = useState("");
   const [endImageUrl, setEndImageUrl] = useState("");
   const [startPreview, setStartPreview] = useState<string | null>(null);
   const [endPreview, setEndPreview] = useState<string | null>(null);
   const [movementPrompt, setMovementPrompt] = useState("");
-  const [model, setModel] = useState("kling-3.0");
-  const [duration, setDuration] = useState(5);
+  const [model, setModel] = useState("veo-3.1");
+  const [duration, setDuration] = useState(4);
   const [preset, setPreset] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ request_id: string; video_url?: string; status?: string } | null>(null);
@@ -36,6 +48,24 @@ export default function VideoSubmitPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const startFileRef = useRef<HTMLInputElement>(null);
   const endFileRef = useRef<HTMLInputElement>(null);
+
+  // Provider-aware options
+  const isGoogle = provider === "google";
+  const videoModels = isGoogle ? GOOGLE_VIDEO_MODELS : HIGGSFIELD_VIDEO_MODELS;
+  const videoDurations = isGoogle ? GOOGLE_DURATIONS : HIGGSFIELD_DURATIONS;
+
+  function handleProviderChange(newProvider: "higgsfield" | "google") {
+    setProvider(newProvider);
+    // Reset model and duration to first option of the new provider
+    if (newProvider === "google") {
+      setModel("veo-3.1");
+      setDuration(4);
+      setPreset("");
+    } else {
+      setModel("kling-3.0");
+      setDuration(5);
+    }
+  }
 
   async function uploadFile(
     file: File,
@@ -110,6 +140,7 @@ export default function VideoSubmitPage() {
           model,
           duration,
           preset: preset || undefined,
+          provider,
         }),
       });
       if (res.ok) {
@@ -139,6 +170,35 @@ export default function VideoSubmitPage() {
       </div>
 
       <div className="space-y-6">
+        {/* Provider Toggle */}
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-400">Provider</label>
+          <div className="inline-flex rounded-lg border border-slate-700 bg-slate-900 p-1">
+            <button
+              type="button"
+              onClick={() => handleProviderChange("google")}
+              className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+                provider === "google"
+                  ? "bg-blue-600 text-white"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              Google
+            </button>
+            <button
+              type="button"
+              onClick={() => handleProviderChange("higgsfield")}
+              className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+                provider === "higgsfield"
+                  ? "bg-amber-600 text-white"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              Higgsfield
+            </button>
+          </div>
+        </div>
+
         {/* Start/End Frame Uploads */}
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           {/* Start Frame */}
@@ -288,23 +348,22 @@ export default function VideoSubmitPage() {
         </div>
 
         {/* Video Config */}
-        <div className="grid grid-cols-3 gap-4">
+        <div className={`grid gap-4 ${isGoogle ? "grid-cols-2" : "grid-cols-3"}`}>
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-400">Modelo</label>
             <select value={model} onChange={(e) => setModel(e.target.value)}
               className="w-full rounded-lg border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500">
-              {VIDEO_MODELS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+              {videoModels.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
             </select>
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-400">Duracao</label>
             <select value={duration} onChange={(e) => setDuration(Number(e.target.value))}
               className="w-full rounded-lg border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500">
-              <option value={5}>5 segundos</option>
-              <option value={10}>10 segundos</option>
-              <option value={15}>15 segundos</option>
+              {videoDurations.map((d) => <option key={d} value={d}>{d} segundos</option>)}
             </select>
           </div>
+          {!isGoogle && (
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-400">Preset Camera</label>
             <select value={preset} onChange={(e) => setPreset(e.target.value)}
@@ -313,6 +372,7 @@ export default function VideoSubmitPage() {
               {CAMERA_PRESETS.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
           </div>
+          )}
         </div>
 
         {/* Submit Error */}

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { submitVideo } from "@/lib/higgsfield";
+import { submitVideoGoogle } from "@/lib/google-ai";
 
 /**
  * POST /api/videos/submit-direct
@@ -25,6 +26,7 @@ export async function POST(request: NextRequest) {
       duration,
       end_image_url,
       preset,
+      provider,
     } = body as {
       start_image_url: string;
       movement_prompt: string;
@@ -32,6 +34,7 @@ export async function POST(request: NextRequest) {
       duration?: number;
       end_image_url?: string;
       preset?: string;
+      provider?: "higgsfield" | "google";
     };
 
     if (!start_image_url || typeof start_image_url !== "string") {
@@ -48,14 +51,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const submission = await submitVideo({
-      prompt: movement_prompt,
-      startImageUrl: start_image_url,
-      endImageUrl: end_image_url,
-      model: model ?? "kling-3.0",
-      duration: duration ?? 5,
-      preset,
-    });
+    const submission = provider === "google"
+      ? await submitVideoGoogle({
+          prompt: movement_prompt,
+          startImageUrl: start_image_url,
+          endImageUrl: end_image_url,
+          model: model ?? "veo-3.1",
+          duration: duration ?? 8,
+        })
+      : await submitVideo({
+          prompt: movement_prompt,
+          startImageUrl: start_image_url,
+          endImageUrl: end_image_url,
+          model: model ?? "kling-3.0",
+          duration: duration ?? 5,
+          preset,
+        });
 
     return NextResponse.json(
       {

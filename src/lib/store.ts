@@ -35,6 +35,7 @@ export interface Scene {
     preset: string | null;
     end_frame: { type: string; image_url: string } | null;
   };
+  provider: "higgsfield" | "google";
   status:
     | "images_generated"
     | "approved"
@@ -184,6 +185,7 @@ export async function getScene(sceneId: string): Promise<Scene | null> {
     end_frame_generated_images: [],
     end_frame_approved_index: null,
     end_frame_reference_images: [],
+    provider: "higgsfield" as const,
   };
   return { ...defaults, ...scene };
 }
