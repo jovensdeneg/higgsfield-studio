@@ -88,10 +88,10 @@ export default function GeneratePage() {
     setBatchModel(defaultModel);
   }, [provider]);
 
-  // ── Reference image warning for Google provider ──
+  // ── Reference image info for Google provider ──
   const referenceImageWarning =
     provider === "google"
-      ? "Imagen não suporta imagens de referência. Personagens serão usados apenas para vídeos (Veo)."
+      ? "Com personagem selecionado, usa Gemini nativo (aceita referências). Sem personagem, usa Imagen."
       : null;
 
   // ── Batch text parsing (live preview) ──
@@ -344,7 +344,7 @@ export default function GeneratePage() {
               disabled={loading}
             />
             {provider === "google" && (
-              <p className="mt-1 text-xs text-amber-400/80">Imagen não suporta imagens de referência. Personagens serão usados apenas para vídeos (Veo).</p>
+              <p className="mt-1 text-xs text-emerald-400/70">Com personagem: usa Gemini nativo (aceita referências visuais). Sem personagem: usa Imagen.</p>
             )}
           </div>
 
@@ -490,7 +490,7 @@ export default function GeneratePage() {
               disabled={batchLoading}
             />
             {provider === "google" && (
-              <p className="mt-1 text-xs text-amber-400/80">Imagen não suporta imagens de referência. Personagens serão usados apenas para vídeos (Veo).</p>
+              <p className="mt-1 text-xs text-emerald-400/70">Com personagem: usa Gemini nativo (aceita referências visuais). Sem personagem: usa Imagen.</p>
             )}
           </div>
 

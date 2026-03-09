@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
     const generatedImages: { url: string; metadata?: Record<string, unknown> }[] = [];
     for (let i = 0; i < variations; i++) {
       const result = useGoogle
-        ? await generateImageGoogle(prompt, imageModel)
+        ? await generateImageGoogle(prompt, imageModel, allRefs.length > 0 ? allRefs : undefined)
         : await generateImage(prompt, imageModel, allRefs.length > 0 ? allRefs : undefined);
       generatedImages.push({ url: result.url, metadata: result.raw });
     }
@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
 
       for (let i = 0; i < efVariations; i++) {
         const result = useGoogle
-          ? await generateImageGoogle(end_frame_prompt.trim(), efModel)
+          ? await generateImageGoogle(end_frame_prompt.trim(), efModel, endRefs.length > 0 ? endRefs : undefined)
           : await generateImage(end_frame_prompt.trim(), efModel, endRefs.length > 0 ? endRefs : undefined);
         endFrameImages.push({ url: result.url, metadata: result.raw });
       }

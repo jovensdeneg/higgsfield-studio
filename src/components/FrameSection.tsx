@@ -62,7 +62,7 @@ export default function FrameSection({
         disabled={disabled}
       />
       {referenceImageWarning && (
-        <p className="mt-1 text-xs text-amber-400/80">{referenceImageWarning}</p>
+        <p className="mt-1 text-xs text-emerald-400/70">{referenceImageWarning}</p>
       )}
 
       {/* Model + Variations row */}

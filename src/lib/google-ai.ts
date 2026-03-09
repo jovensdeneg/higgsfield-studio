@@ -37,10 +37,29 @@ function getApiKey(): string {
 }
 
 // ---------------------------------------------------------------------------
-// Image generation (Imagen)
+// Image generation (Imagen or Gemini native when reference images present)
 // ---------------------------------------------------------------------------
 
+/**
+ * Gera imagem com Google AI.
+ * - Sem referências → Imagen 4.0 (melhor qualidade text-to-image)
+ * - Com referências → Gemini nativo (aceita imagens multimodal no input)
+ */
 export async function generateImageGoogle(
+  prompt: string,
+  model: string = "imagen-4.0",
+  referenceImages?: string[]
+): Promise<HFImageResult> {
+  if (referenceImages && referenceImages.length > 0) {
+    return generateImageGeminiNative(prompt, referenceImages);
+  }
+  return generateImageImagen(prompt, model);
+}
+
+/**
+ * Imagen 4.0 — text-to-image puro (sem referências).
+ */
+async function generateImageImagen(
   prompt: string,
   model: string = "imagen-4.0"
 ): Promise<HFImageResult> {
@@ -72,7 +91,6 @@ export async function generateImageGoogle(
 
   const data = await res.json();
 
-  // Extract base64 image from response
   const predictions = data.predictions ?? [];
   if (predictions.length === 0) {
     throw new Error("Google Imagen: nenhuma imagem gerada");
@@ -85,7 +103,6 @@ export async function generateImageGoogle(
     throw new Error("Google Imagen: resposta sem dados de imagem");
   }
 
-  // Upload base64 to Vercel Blob to get a URL
   const buffer = Buffer.from(base64Data, "base64");
   const filename = `imagen/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
 
@@ -95,6 +112,97 @@ export async function generateImageGoogle(
   });
 
   return { url: blob.url, raw: data };
+}
+
+/**
+ * Gemini nativo — generateContent com imagens de referência multimodal.
+ * Usa gemini-2.0-flash-exp que suporta geração de imagens.
+ */
+async function generateImageGeminiNative(
+  prompt: string,
+  referenceImages: string[]
+): Promise<HFImageResult> {
+  const apiKey = getApiKey();
+
+  // Build multimodal parts: reference images + text prompt
+  const parts: Array<Record<string, unknown>> = [];
+
+  // Add reference images (download and convert to base64)
+  for (const imageUrl of referenceImages.slice(0, 4)) {
+    try {
+      const imgData = await imageUrlToBase64(imageUrl);
+      parts.push({
+        inlineData: {
+          mimeType: imgData.mimeType,
+          data: imgData.data,
+        },
+      });
+    } catch {
+      // Skip images that fail to download
+    }
+  }
+
+  // Add text prompt instructing to generate based on reference
+  parts.push({
+    text: `Using the reference photos above as visual reference for the person's appearance, generate a single photorealistic 16:9 image with the following description:\n\n${prompt}\n\nMaintain the person's exact facial features, skin tone, and physical characteristics from the reference photos. The output must be a single high-quality photorealistic image.`,
+  });
+
+  const geminiModel = "gemini-2.0-flash-exp";
+  const url = `${GEMINI_BASE}/models/${geminiModel}:generateContent`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": apiKey,
+    },
+    body: JSON.stringify({
+      contents: [{ parts }],
+      generationConfig: {
+        responseModalities: ["IMAGE", "TEXT"],
+      },
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    throw new Error(`Gemini image generation error (${res.status}): ${errText}`);
+  }
+
+  const data = await res.json();
+
+  // Extract generated image from response parts
+  const candidates = data.candidates ?? [];
+  if (candidates.length === 0) {
+    throw new Error("Gemini: nenhum candidato na resposta");
+  }
+
+  const responseParts = candidates[0]?.content?.parts ?? [];
+  let base64Data: string | null = null;
+  let mimeType = "image/png";
+
+  for (const part of responseParts) {
+    if (part.inlineData?.data) {
+      base64Data = part.inlineData.data;
+      mimeType = part.inlineData.mimeType ?? "image/png";
+      break;
+    }
+  }
+
+  if (!base64Data) {
+    throw new Error("Gemini: resposta sem dados de imagem gerada");
+  }
+
+  // Upload to Vercel Blob
+  const buffer = Buffer.from(base64Data, "base64");
+  const filename = `gemini/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+
+  const blob = await put(filename, buffer, {
+    access: "public",
+    contentType: mimeType,
+  });
+
+  return { url: blob.url, raw: { ...data, generator: "gemini-native" } };
 }
 
 // ---------------------------------------------------------------------------
