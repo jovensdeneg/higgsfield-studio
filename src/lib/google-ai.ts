@@ -1,8 +1,13 @@
 /**
- * Cliente para Google AI APIs (Imagen + Veo).
+ * Cliente para Google AI APIs (Nano Banana + Veo).
  *
  * Usa a mesma GOOGLE_AI_KEY do improve-prompt.
  * Imagens geradas (base64) são salvas no Vercel Blob para obter URLs.
+ *
+ * Modelos de imagem (Nano Banana):
+ * - Nano Banana Pro (gemini-3-pro-image-preview) — máxima qualidade, 4K
+ * - Nano Banana 2 (gemini-3.1-flash-image-preview) — rápido, qualidade Pro
+ * - Nano Banana (gemini-2.5-flash-image) — original, mais rápido
  */
 
 import { put } from "@vercel/blob";
@@ -15,8 +20,9 @@ const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
 // ---------------------------------------------------------------------------
 
 export const GOOGLE_IMAGE_MODELS: Record<string, string> = {
-  "imagen-4.0": "imagen-4.0-generate-001",
-  "imagen-4.0-fast": "imagen-4.0-fast-generate-001",
+  "nano-banana-pro": "gemini-3-pro-image-preview",
+  "nano-banana-2": "gemini-3.1-flash-image-preview",
+  "nano-banana": "gemini-2.5-flash-image",
 };
 
 export const GOOGLE_VIDEO_MODELS: Record<string, string> = {
@@ -37,118 +43,52 @@ function getApiKey(): string {
 }
 
 // ---------------------------------------------------------------------------
-// Image generation (Imagen or Gemini native when reference images present)
+// Image generation (Nano Banana via generateContent)
 // ---------------------------------------------------------------------------
 
 /**
- * Gera imagem com Google AI.
- * - Sem referências → Imagen 4.0 (melhor qualidade text-to-image)
- * - Com referências → Gemini nativo (aceita imagens multimodal no input)
+ * Gera imagem com Nano Banana (Gemini Image) via generateContent.
+ * Suporta referências visuais como input multimodal (fotos de personagem).
  */
 export async function generateImageGoogle(
   prompt: string,
-  model: string = "imagen-4.0",
+  model: string = "nano-banana-pro",
   referenceImages?: string[]
 ): Promise<HFImageResult> {
-  if (referenceImages && referenceImages.length > 0) {
-    return generateImageGeminiNative(prompt, referenceImages);
-  }
-  return generateImageImagen(prompt, model);
-}
-
-/**
- * Imagen 4.0 — text-to-image puro (sem referências).
- */
-async function generateImageImagen(
-  prompt: string,
-  model: string = "imagen-4.0"
-): Promise<HFImageResult> {
   const apiKey = getApiKey();
-  const modelId = GOOGLE_IMAGE_MODELS[model] ?? GOOGLE_IMAGE_MODELS["imagen-4.0"];
+  const modelId = GOOGLE_IMAGE_MODELS[model] ?? GOOGLE_IMAGE_MODELS["nano-banana-pro"];
 
-  const url = `${GEMINI_BASE}/models/${modelId}:predict`;
-
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-goog-api-key": apiKey,
-    },
-    body: JSON.stringify({
-      instances: [{ prompt }],
-      parameters: {
-        sampleCount: 1,
-        aspectRatio: "16:9",
-        personGeneration: "allow_all",
-      },
-    }),
-  });
-
-  if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    throw new Error(`Google Imagen error (${res.status}): ${errText}`);
-  }
-
-  const data = await res.json();
-
-  const predictions = data.predictions ?? [];
-  if (predictions.length === 0) {
-    throw new Error("Google Imagen: nenhuma imagem gerada");
-  }
-
-  const base64Data = predictions[0].bytesBase64Encoded;
-  const mimeType = predictions[0].mimeType ?? "image/png";
-
-  if (!base64Data) {
-    throw new Error("Google Imagen: resposta sem dados de imagem");
-  }
-
-  const buffer = Buffer.from(base64Data, "base64");
-  const filename = `imagen/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
-
-  const blob = await put(filename, buffer, {
-    access: "public",
-    contentType: mimeType,
-  });
-
-  return { url: blob.url, raw: data };
-}
-
-/**
- * Gemini nativo — generateContent com imagens de referência multimodal.
- * Usa gemini-2.0-flash-exp que suporta geração de imagens.
- */
-async function generateImageGeminiNative(
-  prompt: string,
-  referenceImages: string[]
-): Promise<HFImageResult> {
-  const apiKey = getApiKey();
-
-  // Build multimodal parts: reference images + text prompt
+  // Build multimodal parts
   const parts: Array<Record<string, unknown>> = [];
 
-  // Add reference images (download and convert to base64)
-  for (const imageUrl of referenceImages.slice(0, 4)) {
-    try {
-      const imgData = await imageUrlToBase64(imageUrl);
-      parts.push({
-        inlineData: {
-          mimeType: imgData.mimeType,
-          data: imgData.data,
-        },
-      });
-    } catch {
-      // Skip images that fail to download
+  // Add reference images if provided (download and convert to base64)
+  if (referenceImages && referenceImages.length > 0) {
+    for (const imageUrl of referenceImages.slice(0, 4)) {
+      try {
+        const imgData = await imageUrlToBase64(imageUrl);
+        parts.push({
+          inlineData: {
+            mimeType: imgData.mimeType,
+            data: imgData.data,
+          },
+        });
+      } catch {
+        // Skip images that fail to download
+      }
     }
+
+    // Prompt with reference context
+    parts.push({
+      text: `Using the reference photos above as visual reference for the person's appearance, generate a single photorealistic 16:9 image with the following description:\n\n${prompt}\n\nMaintain the person's exact facial features, skin tone, and physical characteristics from the reference photos. The output must be a single high-quality photorealistic image.`,
+    });
+  } else {
+    // Simple text-to-image prompt
+    parts.push({
+      text: `Generate a single photorealistic 16:9 image with the following description:\n\n${prompt}`,
+    });
   }
 
-  // Add text prompt instructing to generate based on reference
-  parts.push({
-    text: `Using the reference photos above as visual reference for the person's appearance, generate a single photorealistic 16:9 image with the following description:\n\n${prompt}\n\nMaintain the person's exact facial features, skin tone, and physical characteristics from the reference photos. The output must be a single high-quality photorealistic image.`,
-  });
-
-  const geminiModel = "gemini-2.0-flash-exp";
-  const url = `${GEMINI_BASE}/models/${geminiModel}:generateContent`;
+  const url = `${GEMINI_BASE}/models/${modelId}:generateContent`;
 
   const res = await fetch(url, {
     method: "POST",
@@ -166,7 +106,7 @@ async function generateImageGeminiNative(
 
   if (!res.ok) {
     const errText = await res.text().catch(() => "");
-    throw new Error(`Gemini image generation error (${res.status}): ${errText}`);
+    throw new Error(`Nano Banana error (${res.status}): ${errText}`);
   }
 
   const data = await res.json();
@@ -174,7 +114,7 @@ async function generateImageGeminiNative(
   // Extract generated image from response parts
   const candidates = data.candidates ?? [];
   if (candidates.length === 0) {
-    throw new Error("Gemini: nenhum candidato na resposta");
+    throw new Error("Nano Banana: nenhum candidato na resposta");
   }
 
   const responseParts = candidates[0]?.content?.parts ?? [];
@@ -190,19 +130,19 @@ async function generateImageGeminiNative(
   }
 
   if (!base64Data) {
-    throw new Error("Gemini: resposta sem dados de imagem gerada");
+    throw new Error("Nano Banana: resposta sem dados de imagem gerada");
   }
 
   // Upload to Vercel Blob
   const buffer = Buffer.from(base64Data, "base64");
-  const filename = `gemini/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+  const filename = `nano-banana/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
 
   const blob = await put(filename, buffer, {
     access: "public",
     contentType: mimeType,
   });
 
-  return { url: blob.url, raw: { ...data, generator: "gemini-native" } };
+  return { url: blob.url, raw: { ...data, model: modelId } };
 }
 
 // ---------------------------------------------------------------------------

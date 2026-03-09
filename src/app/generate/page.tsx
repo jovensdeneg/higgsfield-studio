@@ -30,8 +30,9 @@ const HF_IMAGE_MODELS = [
 ];
 
 const GOOGLE_IMAGE_MODELS = [
-  { value: "imagen-4.0", label: "Imagen 4.0" },
-  { value: "imagen-4.0-fast", label: "Imagen 4.0 Fast" },
+  { value: "nano-banana-pro", label: "Nano Banana Pro" },
+  { value: "nano-banana-2", label: "Nano Banana 2 (Fast)" },
+  { value: "nano-banana", label: "Nano Banana" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -55,20 +56,20 @@ export default function GeneratePage() {
 
   // Start frame (required)
   const [startPrompt, setStartPrompt] = useState("");
-  const [startModel, setStartModel] = useState("imagen-4.0");
+  const [startModel, setStartModel] = useState("nano-banana-pro");
   const [startVariations, setStartVariations] = useState(3);
   const [startRefs, setStartRefs] = useState<string[]>([]);
 
   // End frame (optional)
   const [showEndFrame, setShowEndFrame] = useState(false);
   const [endPrompt, setEndPrompt] = useState("");
-  const [endModel, setEndModel] = useState("imagen-4.0");
+  const [endModel, setEndModel] = useState("nano-banana-pro");
   const [endVariations, setEndVariations] = useState(3);
   const [endRefs, setEndRefs] = useState<string[]>([]);
 
   // ── Batch mode state ──
   const [batchCharacterId, setBatchCharacterId] = useState<string | null>(null);
-  const [batchModel, setBatchModel] = useState("imagen-4.0");
+  const [batchModel, setBatchModel] = useState("nano-banana-pro");
   const [batchText, setBatchText] = useState("");
   const [batchLoading, setBatchLoading] = useState(false);
   const [batchCurrentScene, setBatchCurrentScene] = useState(0);
@@ -82,16 +83,15 @@ export default function GeneratePage() {
 
   // ── Reset models when provider changes ──
   useEffect(() => {
-    const defaultModel = provider === "google" ? "imagen-4.0" : "nano-banana-pro";
-    setStartModel(defaultModel);
-    setEndModel(defaultModel);
-    setBatchModel(defaultModel);
+    setStartModel("nano-banana-pro");
+    setEndModel("nano-banana-pro");
+    setBatchModel("nano-banana-pro");
   }, [provider]);
 
   // ── Reference image info for Google provider ──
   const referenceImageWarning =
     provider === "google"
-      ? "Com personagem selecionado, usa Gemini nativo (aceita referências). Sem personagem, usa Imagen."
+      ? "Nano Banana aceita referências visuais para manter fidelidade ao personagem."
       : null;
 
   // ── Batch text parsing (live preview) ──
@@ -103,10 +103,9 @@ export default function GeneratePage() {
   // ── Standard mode handlers ──
 
   function handleRemoveEndFrame() {
-    const defaultModel = provider === "google" ? "imagen-4.0" : "nano-banana-pro";
     setShowEndFrame(false);
     setEndPrompt("");
-    setEndModel(defaultModel);
+    setEndModel("nano-banana-pro");
     setEndVariations(3);
     setEndRefs([]);
   }
@@ -283,7 +282,7 @@ export default function GeneratePage() {
                 : "text-slate-400 hover:text-white"
             }`}
           >
-            Google (Imagen + Veo)
+            Google (Nano Banana + Veo)
           </button>
           <button
             type="button"
@@ -344,7 +343,7 @@ export default function GeneratePage() {
               disabled={loading}
             />
             {provider === "google" && (
-              <p className="mt-1 text-xs text-emerald-400/70">Com personagem: usa Gemini nativo (aceita referências visuais). Sem personagem: usa Imagen.</p>
+              <p className="mt-1 text-xs text-emerald-400/70">Nano Banana aceita referências visuais para manter fidelidade ao personagem.</p>
             )}
           </div>
 
@@ -490,7 +489,7 @@ export default function GeneratePage() {
               disabled={batchLoading}
             />
             {provider === "google" && (
-              <p className="mt-1 text-xs text-emerald-400/70">Com personagem: usa Gemini nativo (aceita referências visuais). Sem personagem: usa Imagen.</p>
+              <p className="mt-1 text-xs text-emerald-400/70">Nano Banana aceita referências visuais para manter fidelidade ao personagem.</p>
             )}
           </div>
 
