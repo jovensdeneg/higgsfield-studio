@@ -22,6 +22,8 @@ interface Scene {
   end_frame_approved_index: number | null;
   provider?: "higgsfield" | "google";
   video_url?: string | null;
+  error_message?: string | null;
+  video_config?: { model: string; duration: number };
   created_at: string;
 }
 
@@ -154,12 +156,36 @@ export default function ScenesPage() {
                       </span>
                     )}
                   </div>
-                  <Link
-                    href={`/scenes/${scene.scene_id}`}
-                    className="text-xs text-slate-400 hover:text-emerald-400 transition-colors"
-                  >
-                    Editar / Detalhes →
-                  </Link>
+                  <div className="flex items-center gap-3">
+                    {/* Video production inline status */}
+                    {scene.status === "video_submitted" && (
+                      <span className="inline-flex items-center gap-1.5 text-xs text-blue-400">
+                        <span className="h-2 w-2 animate-pulse rounded-full bg-blue-400" />
+                        Gerando video...
+                      </span>
+                    )}
+                    {scene.status === "completed" && scene.video_url && (
+                      <a
+                        href={scene.video_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-emerald-400 hover:text-emerald-300 hover:underline"
+                      >
+                        Ver video
+                      </a>
+                    )}
+                    {scene.status === "approved" && scene.error_message && (
+                      <span className="text-xs text-red-400">
+                        Falha no envio
+                      </span>
+                    )}
+                    <Link
+                      href={`/scenes/${scene.scene_id}`}
+                      className="text-xs text-slate-400 hover:text-emerald-400 transition-colors"
+                    >
+                      Editar / Detalhes →
+                    </Link>
+                  </div>
                 </div>
 
                 {/* Movement prompt (if set) */}
@@ -266,7 +292,7 @@ export default function ScenesPage() {
                               disabled={isApprovingThis || !scene.movement_prompt}
                               className="flex-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                              {isApprovingThis ? "Aprovando..." : `Aprovar Opção ${i + 1}`}
+                              {isApprovingThis ? "Enviando..." : `Aprovar e Enviar Opção ${i + 1}`}
                             </button>
                           </div>
                         )}

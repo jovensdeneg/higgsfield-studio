@@ -1,398 +1,185 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import SceneCard from "@/components/SceneCard";
-import BatchProgress from "@/components/BatchProgress";
-import EmptyState from "@/components/EmptyState";
+import Link from "next/link";
+import StatusBadge from "@/components/StatusBadge";
+import VideoPlayer from "@/components/VideoPlayer";
 
 interface Scene {
   scene_id: string;
   original_prompt: string;
-  model_image: string;
-  generated_images: { url: string }[];
-  approved_image_index: number | null;
+  movement_prompt: string | null;
   status: string;
-  video_url: string | null;
-  created_at: string;
-}
-
-interface BatchJob {
-  scene_id: string;
+  provider?: "higgsfield" | "google";
+  video_config: { model: string; duration: number };
   request_id: string | null;
-  prompt_sent?: string;
-  model?: string;
-  status: string;
-  error?: string;
-}
-
-interface BatchSummary {
-  completed: number;
-  in_progress: number;
-  failed: number;
-  total: number;
-  percent_complete: number;
-}
-
-interface BatchData {
-  batch_id: string;
-  scenes: BatchJob[];
-  status_summary?: BatchSummary;
-  last_check?: string;
-  created_at: string;
-}
-
-interface CollectResult {
-  scene_id: string;
-  request_id: string;
   video_url: string | null;
-  status: string;
-  error?: string;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
-export default function BatchPage() {
-  const [approvedScenes, setApprovedScenes] = useState<Scene[]>([]);
-  const [batch, setBatch] = useState<BatchData | null>(null);
+export default function ProductionMonitorPage() {
+  const [scenes, setScenes] = useState<Scene[]>([]);
   const [loading, setLoading] = useState(true);
-  const [launching, setLaunching] = useState(false);
-  const [collecting, setCollecting] = useState(false);
-  const [collectResults, setCollectResults] = useState<CollectResult[] | null>(
-    null
-  );
+  const [checkingAll, setCheckingAll] = useState(false);
 
-  const fetchData = useCallback(async () => {
+  const fetchScenes = useCallback(async () => {
     try {
-      const [scenesRes, batchRes] = await Promise.all([
-        fetch("/api/scenes"),
-        fetch("/api/batch/status"),
-      ]);
-
-      if (scenesRes.ok) {
-        const data = await scenesRes.json();
-        const scenes = (data.scenes ?? []) as Scene[];
-        setApprovedScenes(
-          scenes.filter((s) => s.status === "approved")
+      const res = await fetch("/api/scenes");
+      if (res.ok) {
+        const data = await res.json();
+        const all = (data.scenes ?? []) as Scene[];
+        // Show only scenes that are in production or completed
+        setScenes(
+          all.filter(
+            (s) =>
+              s.status === "video_submitted" ||
+              s.status === "completed" ||
+              (s.status === "approved" && s.error_message)
+          )
         );
       }
-
-      if (batchRes.ok) {
-        const data = await batchRes.json();
-        setBatch(data.batch ?? null);
-      }
     } catch {
-      // Silently handle errors on refresh
+      // Silently ignore
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // Initial fetch
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    fetchScenes();
+  }, [fetchScenes]);
 
-  // Auto-refresh batch status every 10 seconds
+  // Auto-refresh every 10 seconds
   useEffect(() => {
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch("/api/batch/status");
-        if (res.ok) {
-          const data = await res.json();
-          setBatch(data.batch ?? null);
-        }
-      } catch {
-        // Silently ignore refresh errors
-      }
-    }, 10_000);
-
+    const interval = setInterval(fetchScenes, 10_000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchScenes]);
 
-  async function handleLaunchBatch() {
-    setLaunching(true);
+  async function handleCheckAll() {
+    setCheckingAll(true);
     try {
-      const res = await fetch("/api/batch/launch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ confirm: true }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        alert(data.error ?? "Erro ao lancar batch");
-        return;
-      }
-
-      setBatch(data.batch ?? null);
-      // Refresh approved scenes (they should now be video_submitted)
-      const scenesRes = await fetch("/api/scenes");
-      if (scenesRes.ok) {
-        const scenesData = await scenesRes.json();
-        const scenes = (scenesData.scenes ?? []) as Scene[];
-        setApprovedScenes(scenes.filter((s) => s.status === "approved"));
-      }
+      // Check status for all video_submitted scenes
+      const submitted = scenes.filter((s) => s.status === "video_submitted");
+      await Promise.all(
+        submitted.map((s) =>
+          fetch(`/api/scenes/${s.scene_id}/video-status`).catch(() => null)
+        )
+      );
+      // Refresh scene list after checking
+      await fetchScenes();
     } catch {
-      alert("Erro de rede ao lancar batch");
+      // Silently ignore
     } finally {
-      setLaunching(false);
+      setCheckingAll(false);
     }
   }
 
-  async function handleCollectResults() {
-    setCollecting(true);
-    try {
-      const res = await fetch("/api/batch/collect", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        alert(data.error ?? "Erro ao coletar resultados");
-        return;
-      }
-
-      setCollectResults(data.results ?? []);
-
-      // Refresh batch status
-      const batchRes = await fetch("/api/batch/status");
-      if (batchRes.ok) {
-        const batchData = await batchRes.json();
-        setBatch(batchData.batch ?? null);
-      }
-    } catch {
-      alert("Erro de rede ao coletar resultados");
-    } finally {
-      setCollecting(false);
-    }
-  }
+  const submitted = scenes.filter((s) => s.status === "video_submitted");
+  const completed = scenes.filter((s) => s.status === "completed");
+  const failed = scenes.filter(
+    (s) => s.status === "approved" && s.error_message
+  );
 
   if (loading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-700 border-t-emerald-500" />
-          <p className="text-sm text-slate-400">Carregando batch...</p>
+          <p className="text-sm text-slate-400">Carregando producao...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-10">
-      {/* Section 1: Approved scenes ready for batch */}
-      <section>
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-white">
-              Cenas Prontas para Batch
-            </h2>
-            <p className="mt-1 text-sm text-slate-400">
-              {approvedScenes.length} cena{approvedScenes.length !== 1 ? "s" : ""}{" "}
-              aprovada{approvedScenes.length !== 1 ? "s" : ""} aguardando
-              lancamento
-            </p>
-          </div>
+    <div className="space-y-8">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-white">
+            Monitor de Producao
+          </h1>
+          <p className="mt-1 text-sm text-slate-400">
+            {submitted.length} gerando | {completed.length} concluidos | {failed.length} com erro
+          </p>
+        </div>
+        {submitted.length > 0 && (
           <button
-            onClick={handleLaunchBatch}
-            disabled={launching || approvedScenes.length === 0}
-            className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={handleCheckAll}
+            disabled={checkingAll}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-sm font-medium text-slate-200 transition-colors hover:bg-slate-700 disabled:opacity-50"
           >
-            {launching ? (
+            {checkingAll ? (
               <>
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-emerald-300 border-t-transparent" />
-                Lancando...
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-slate-600 border-t-white" />
+                Verificando...
               </>
             ) : (
               <>
-                <svg
-                  className="h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={2}
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M15.59 14.37a6 6 0 0 1-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 0 0 6.16-12.12A14.98 14.98 0 0 0 9.631 8.41m5.96 5.96a14.926 14.926 0 0 1-5.841 2.58m-.119-8.54a6 6 0 0 0-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 0 0-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 0 1-2.448-2.448 14.9 14.9 0 0 1 .06-.312m-2.24 2.39a4.493 4.493 0 0 0-1.757 4.306 4.493 4.493 0 0 0 4.306-1.758M16.5 9a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z"
-                  />
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182" />
                 </svg>
-                Lancar Batch
+                Verificar Todos
               </>
             )}
           </button>
-        </div>
-
-        {approvedScenes.length === 0 ? (
-          <EmptyState
-            title="Nenhuma cena aprovada"
-            description="Aprove cenas na pagina de detalhes para adiciona-las ao batch."
-            actionLabel="Ver Cenas"
-            actionHref="/scenes"
-          />
-        ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {approvedScenes.map((scene) => (
-              <SceneCard
-                key={scene.scene_id}
-                scene={{
-                  ...scene,
-                  generated_images: scene.generated_images.map(
-                    (img) => img.url
-                  ),
-                }}
-              />
-            ))}
-          </div>
         )}
-      </section>
+      </div>
 
-      {/* Section 2: Batch Status */}
-      <section>
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-white">Status do Batch</h2>
-            {batch && (
-              <p className="mt-1 text-sm text-slate-400">
-                Batch: {batch.batch_id}
-              </p>
-            )}
-          </div>
-          {batch &&
-            batch.status_summary &&
-            batch.status_summary.completed > 0 && (
-              <button
-                onClick={handleCollectResults}
-                disabled={collecting}
-                className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-sm font-medium text-slate-200 transition-colors hover:bg-slate-700 disabled:opacity-50"
-              >
-                {collecting ? (
-                  <>
-                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-slate-600 border-t-white" />
-                    Coletando...
-                  </>
-                ) : (
-                  <>
-                    <svg
-                      className="h-4 w-4"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      strokeWidth={2}
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
-                      />
-                    </svg>
-                    Coletar Resultados
-                  </>
-                )}
-              </button>
-            )}
+      {scenes.length === 0 ? (
+        <div className="rounded-xl border border-slate-800 bg-slate-900 p-12 text-center">
+          <p className="text-slate-400">
+            Nenhum video em producao. Aprove cenas para enviar videos automaticamente.
+          </p>
+          <Link
+            href="/scenes"
+            className="mt-4 inline-block text-sm text-emerald-400 hover:text-emerald-300 hover:underline"
+          >
+            Ver Cenas
+          </Link>
         </div>
-
-        {!batch ? (
-          <EmptyState
-            title="Nenhum batch iniciado"
-            description="Lance um batch com as cenas aprovadas para iniciar a geracao de videos."
-          />
-        ) : (
-          <div className="space-y-6">
-            {/* Progress */}
-            {batch.status_summary && (
-              <BatchProgress summary={batch.status_summary} />
-            )}
-
-            {/* Auto-refresh indicator */}
-            <p className="text-xs text-slate-600">
-              Atualizacao automatica a cada 10 segundos
-              {batch.last_check && (
-                <>
-                  {" "}
-                  - Ultima verificacao:{" "}
-                  {new Date(batch.last_check).toLocaleTimeString("pt-BR")}
-                </>
-              )}
-            </p>
-
-            {/* Jobs Table */}
-            <div className="overflow-hidden rounded-xl border border-slate-800">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-800 bg-slate-900">
-                    <th className="px-4 py-3 text-left font-medium text-slate-400">
-                      Cena
-                    </th>
-                    <th className="px-4 py-3 text-left font-medium text-slate-400">
-                      Modelo
-                    </th>
-                    <th className="px-4 py-3 text-left font-medium text-slate-400">
-                      Status
-                    </th>
-                    <th className="px-4 py-3 text-left font-medium text-slate-400">
-                      Request ID
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {batch.scenes.map((job) => (
-                    <tr
-                      key={job.scene_id}
-                      className="border-b border-slate-800/50 last:border-0"
-                    >
-                      <td className="px-4 py-3 font-mono text-xs text-white">
-                        {job.scene_id}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-slate-400">
-                        {job.model ?? "-"}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                            job.status === "completed"
-                              ? "bg-emerald-500/15 text-emerald-400"
-                              : job.status === "failed" ||
-                                  job.status === "error"
-                                ? "bg-red-500/15 text-red-400"
-                                : job.status === "submitted"
-                                  ? "bg-blue-500/15 text-blue-400"
-                                  : "bg-slate-700/50 text-slate-400"
-                          }`}
-                        >
-                          {job.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 font-mono text-xs text-slate-500">
-                        {job.request_id
-                          ? job.request_id.slice(0, 16) + "..."
-                          : "-"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+      ) : (
+        <>
+          {/* Progress bar */}
+          {scenes.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex justify-between text-xs text-slate-500">
+                <span>Progresso geral</span>
+                <span>
+                  {completed.length}/{scenes.length} concluidos
+                </span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-slate-800">
+                <div
+                  className="h-full rounded-full bg-emerald-500 transition-all duration-500"
+                  style={{
+                    width: `${scenes.length > 0 ? Math.round((completed.length / scenes.length) * 100) : 0}%`,
+                  }}
+                />
+              </div>
             </div>
-          </div>
-        )}
-      </section>
+          )}
 
-      {/* Section 3: Collected Results */}
-      {collectResults && collectResults.length > 0 && (
-        <section>
-          <h2 className="mb-4 text-xl font-bold text-white">
-            Resultados Coletados
-          </h2>
+          {/* Auto-refresh indicator */}
+          <p className="text-xs text-slate-600">
+            Atualizacao automatica a cada 10 segundos
+          </p>
+
+          {/* Scene table */}
           <div className="overflow-hidden rounded-xl border border-slate-800">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-800 bg-slate-900">
                   <th className="px-4 py-3 text-left font-medium text-slate-400">
                     Cena
+                  </th>
+                  <th className="px-4 py-3 text-left font-medium text-slate-400">
+                    Provider
+                  </th>
+                  <th className="px-4 py-3 text-left font-medium text-slate-400">
+                    Modelo
                   </th>
                   <th className="px-4 py-3 text-left font-medium text-slate-400">
                     Status
@@ -403,41 +190,66 @@ export default function BatchPage() {
                 </tr>
               </thead>
               <tbody>
-                {collectResults.map((result) => (
+                {scenes.map((scene) => (
                   <tr
-                    key={result.scene_id}
+                    key={scene.scene_id}
                     className="border-b border-slate-800/50 last:border-0"
                   >
-                    <td className="px-4 py-3 font-mono text-xs text-white">
-                      {result.scene_id}
+                    <td className="px-4 py-3">
+                      <Link
+                        href={`/scenes/${scene.scene_id}`}
+                        className="font-mono text-xs text-white hover:text-emerald-400"
+                      >
+                        {scene.scene_id}
+                      </Link>
                     </td>
                     <td className="px-4 py-3">
                       <span
-                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                          result.status === "completed"
-                            ? "bg-emerald-500/15 text-emerald-400"
-                            : result.status === "error"
-                              ? "bg-red-500/15 text-red-400"
-                              : "bg-slate-700/50 text-slate-400"
+                        className={`rounded px-2 py-0.5 text-[10px] font-bold uppercase ${
+                          scene.provider === "google"
+                            ? "bg-blue-500/20 text-blue-400"
+                            : "bg-amber-500/20 text-amber-400"
                         }`}
                       >
-                        {result.status}
+                        {scene.provider === "google" ? "Google" : "Higgsfield"}
                       </span>
                     </td>
+                    <td className="px-4 py-3 text-xs text-slate-400">
+                      {scene.video_config?.model ?? "-"} ({scene.video_config?.duration ?? "-"}s)
+                    </td>
                     <td className="px-4 py-3">
-                      {result.video_url ? (
+                      {scene.status === "video_submitted" ? (
+                        <span className="inline-flex items-center gap-1.5 text-xs text-blue-400">
+                          <span className="h-2 w-2 animate-pulse rounded-full bg-blue-400" />
+                          Gerando...
+                        </span>
+                      ) : scene.status === "completed" ? (
+                        <StatusBadge status="completed" />
+                      ) : scene.error_message ? (
+                        <span className="text-xs text-red-400">Falhou</span>
+                      ) : (
+                        <StatusBadge status={scene.status} />
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {scene.video_url ? (
                         <a
-                          href={result.video_url}
+                          href={scene.video_url}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-xs text-emerald-400 hover:text-emerald-300 hover:underline"
                         >
                           Abrir video
                         </a>
-                      ) : (
-                        <span className="text-xs text-slate-500">
-                          {result.error ?? "Indisponivel"}
+                      ) : scene.error_message ? (
+                        <span
+                          className="text-xs text-red-400 cursor-help"
+                          title={scene.error_message}
+                        >
+                          {scene.error_message.slice(0, 50)}...
                         </span>
+                      ) : (
+                        <span className="text-xs text-slate-500">-</span>
                       )}
                     </td>
                   </tr>
@@ -445,7 +257,41 @@ export default function BatchPage() {
               </tbody>
             </table>
           </div>
-        </section>
+
+          {/* Completed videos preview */}
+          {completed.length > 0 && (
+            <div>
+              <h2 className="mb-4 text-lg font-semibold text-white">
+                Videos Concluidos
+              </h2>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {completed
+                  .filter((s) => s.video_url)
+                  .map((scene) => (
+                    <div
+                      key={scene.scene_id}
+                      className="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden"
+                    >
+                      <div className="border-b border-slate-800 px-4 py-2">
+                        <Link
+                          href={`/scenes/${scene.scene_id}`}
+                          className="text-sm font-medium text-white hover:text-emerald-400"
+                        >
+                          {scene.scene_id}
+                        </Link>
+                      </div>
+                      <div className="p-4">
+                        <VideoPlayer
+                          url={scene.video_url!}
+                          title={scene.original_prompt}
+                        />
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

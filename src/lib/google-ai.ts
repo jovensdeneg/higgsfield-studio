@@ -195,12 +195,28 @@ export async function generateImageGoogle(
 // ---------------------------------------------------------------------------
 
 async function imageUrlToBase64(imageUrl: string): Promise<{ data: string; mimeType: string }> {
-  const res = await fetch(imageUrl);
-  if (!res.ok) throw new Error(`Failed to download image: ${res.status}`);
-  const buffer = await res.arrayBuffer();
-  const base64 = Buffer.from(buffer).toString("base64");
-  const mimeType = res.headers.get("content-type") ?? "image/png";
-  return { data: base64, mimeType };
+  try {
+    const res = await fetch(imageUrl);
+    if (!res.ok) {
+      throw new Error(
+        `Não foi possível baixar a imagem (${res.status}). ` +
+        `URL: ${imageUrl.slice(0, 100)}... ` +
+        (res.status === 403
+          ? "Verifique se o Blob Store está configurado com acesso público."
+          : "Verifique se a URL da imagem está acessível.")
+      );
+    }
+    const buffer = await res.arrayBuffer();
+    const base64 = Buffer.from(buffer).toString("base64");
+    const mimeType = res.headers.get("content-type") ?? "image/png";
+    return { data: base64, mimeType };
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("Não foi possível")) throw err;
+    throw new Error(
+      `Erro ao baixar imagem para converter em base64: ${err instanceof Error ? err.message : String(err)}. ` +
+      `URL: ${imageUrl.slice(0, 100)}...`
+    );
+  }
 }
 
 export async function submitVideoGoogle(opts: {
@@ -256,14 +272,23 @@ export async function submitVideoGoogle(opts: {
         aspectRatio: "16:9",
         resolution,
         durationSeconds: String(duration),
-        personGeneration: "allow_all",
       },
     }),
   });
 
   if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    throw new Error(`Google Veo error (${res.status}): ${errText}`);
+    const errText = await res.text().catch(() => "(sem detalhes)");
+    const hint =
+      res.status === 400
+        ? " Verifique se o prompt e as imagens são válidos."
+        : res.status === 403
+          ? " Verifique se a GOOGLE_AI_KEY tem permissão para Veo."
+          : res.status === 404
+            ? ` Modelo ${modelId} pode não estar disponível para sua API key.`
+            : "";
+    throw new Error(
+      `Google Veo erro (${res.status}): ${errText.slice(0, 500)}${hint}`
+    );
   }
 
   const data = await res.json();

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import StatusBadge from "@/components/StatusBadge";
 import ImageGrid from "@/components/ImageGrid";
@@ -40,6 +40,7 @@ interface Scene {
   status: string;
   request_id: string | null;
   video_url: string | null;
+  error_message: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -142,6 +143,9 @@ export default function SceneDetailPage() {
   const [regenTarget, setRegenTarget] = useState<"start" | "end">("start");
   const [regenerating, setRegenerating] = useState(false);
 
+  // ---- Retry state ---------------------------------------------------------
+  const [retrying, setRetrying] = useState(false);
+
   // ---- Derived state ------------------------------------------------------
   const hasEndFrameImages = (scene?.end_frame_generated_images?.length ?? 0) > 0;
   const isImagesGenerated = scene?.status === "images_generated";
@@ -217,7 +221,61 @@ export default function SceneDetailPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scene]);
 
+  // ---- Video status polling -----------------------------------------------
+  const pollVideoStatus = useCallback(async () => {
+    if (!scene || scene.status !== "video_submitted" || !scene.request_id) return;
+    try {
+      const res = await fetch(`/api/scenes/${sceneId}/video-status`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.scene) setScene(data.scene);
+      }
+    } catch {
+      // Silently ignore polling errors
+    }
+  }, [scene?.status, scene?.request_id, sceneId]);
+
+  useEffect(() => {
+    if (scene?.status !== "video_submitted") return;
+
+    // Poll immediately once, then every 10 seconds
+    pollVideoStatus();
+    const interval = setInterval(pollVideoStatus, 10_000);
+    return () => clearInterval(interval);
+  }, [scene?.status, pollVideoStatus]);
+
   // ---- Handlers -----------------------------------------------------------
+
+  async function handleRetrySubmit() {
+    if (!scene) return;
+    setRetrying(true);
+    try {
+      const body: Record<string, unknown> = {
+        image_index: scene.approved_image_index ?? 1,
+        movement_prompt: scene.movement_prompt ?? "",
+        video_model: scene.video_config.model,
+        duration: scene.video_config.duration,
+      };
+      if (scene.end_frame_approved_index) {
+        body.end_frame_index = scene.end_frame_approved_index;
+      }
+      if (scene.video_config.preset) {
+        body.preset = scene.video_config.preset;
+      }
+
+      const res = await fetch(`/api/scenes/${sceneId}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (data.scene) setScene(data.scene);
+    } catch {
+      // Error handled by scene update
+    } finally {
+      setRetrying(false);
+    }
+  }
 
   async function handleApprove(e: React.FormEvent) {
     e.preventDefault();
@@ -728,7 +786,7 @@ export default function SceneDetailPage() {
               {approving ? (
                 <>
                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-emerald-300 border-t-transparent" />
-                  Aprovando...
+                  Aprovando e enviando...
                 </>
               ) : (
                 <>
@@ -745,7 +803,7 @@ export default function SceneDetailPage() {
                       d="m4.5 12.75 6 6 9-13.5"
                     />
                   </svg>
-                  Aprovar Cena
+                  Aprovar e Enviar para Producao
                 </>
               )}
             </button>
@@ -867,6 +925,61 @@ export default function SceneDetailPage() {
               </p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ================================================================= */}
+      {/* VIDEO PRODUCTION STATUS                                           */}
+      {/* ================================================================= */}
+      {scene.status === "video_submitted" && (
+        <div className="rounded-xl border border-blue-800/50 bg-blue-900/10 p-6">
+          <h3 className={sectionHeadingClasses}>Producao do Video</h3>
+          <div className="flex items-center gap-4">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-700 border-t-blue-400" />
+            <div>
+              <p className="text-sm font-medium text-blue-300">
+                Gerando video...
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Modelo: {scene.video_config.model} | Duracao: {scene.video_config.duration}s
+                {scene.request_id && (
+                  <> | ID: {scene.request_id.slice(0, 24)}...</>
+                )}
+              </p>
+              <p className="mt-1 text-xs text-slate-600">
+                Verificacao automatica a cada 10 segundos
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Error with retry */}
+      {scene.status === "approved" && scene.error_message && (
+        <div className="rounded-xl border border-red-800/50 bg-red-900/10 p-6">
+          <h3 className="mb-3 text-lg font-semibold text-white">
+            Erro na Producao do Video
+          </h3>
+          <p className="text-sm text-red-400">{scene.error_message}</p>
+          <button
+            onClick={handleRetrySubmit}
+            disabled={retrying}
+            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-500 disabled:opacity-50"
+          >
+            {retrying ? (
+              <>
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-red-300 border-t-transparent" />
+                Reenviando...
+              </>
+            ) : (
+              <>
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182" />
+                </svg>
+                Tentar Novamente
+              </>
+            )}
+          </button>
         </div>
       )}
 

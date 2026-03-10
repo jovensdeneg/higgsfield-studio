@@ -43,6 +43,7 @@ export interface Scene {
     | "completed";
   request_id: string | null;
   video_url: string | null;
+  error_message: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -186,6 +187,7 @@ export async function getScene(sceneId: string): Promise<Scene | null> {
     end_frame_approved_index: null,
     end_frame_reference_images: [],
     provider: "higgsfield" as const,
+    error_message: null,
   };
   return { ...defaults, ...scene };
 }

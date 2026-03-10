@@ -177,6 +177,7 @@ export async function POST(request: NextRequest) {
       status: "images_generated",
       request_id: null,
       video_url: null,
+      error_message: null,
       created_at: now,
       updated_at: now,
     };
