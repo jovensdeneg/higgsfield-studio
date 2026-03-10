@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import Link from "next/link";
 import ImprovePromptButton from "@/components/ImprovePromptButton";
 import VideoPlayer from "@/components/VideoPlayer";
 
@@ -19,7 +20,8 @@ const GOOGLE_VIDEO_MODELS = [
 ];
 
 const HIGGSFIELD_DURATIONS = [5, 10, 15];
-const GOOGLE_DURATIONS = [4, 6, 8];
+// Image-to-video com Veo 3.1 so suporta 8s
+const GOOGLE_DURATIONS = [8];
 
 const CAMERA_PRESETS = [
   "Dolly In", "Dolly Out", "Dolly Left", "Dolly Right",
@@ -37,10 +39,10 @@ export default function VideoSubmitPage() {
   const [endPreview, setEndPreview] = useState<string | null>(null);
   const [movementPrompt, setMovementPrompt] = useState("");
   const [model, setModel] = useState("veo-3.1");
-  const [duration, setDuration] = useState(4);
+  const [duration, setDuration] = useState(8);
   const [preset, setPreset] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [result, setResult] = useState<{ request_id: string; video_url?: string; status?: string } | null>(null);
+  const [result, setResult] = useState<{ request_id: string; scene_id?: string; video_url?: string; status?: string } | null>(null);
   const [uploadingStart, setUploadingStart] = useState(false);
   const [uploadingEnd, setUploadingEnd] = useState(false);
   const [startUploadError, setStartUploadError] = useState<string | null>(null);
@@ -59,7 +61,7 @@ export default function VideoSubmitPage() {
     // Reset model and duration to first option of the new provider
     if (newProvider === "google") {
       setModel("veo-3.1");
-      setDuration(4);
+      setDuration(8);
       setPreset("");
     } else {
       setModel("kling-3.0");
@@ -145,7 +147,7 @@ export default function VideoSubmitPage() {
       });
       if (res.ok) {
         const data = await res.json();
-        setResult({ request_id: data.request_id, status: "submitted" });
+        setResult({ request_id: data.request_id, scene_id: data.scene_id, status: "submitted" });
       } else {
         const data = await res.json().catch(() => ({}));
         setSubmitError(data.error || `Erro ao enviar video (${res.status})`);
@@ -156,6 +158,32 @@ export default function VideoSubmitPage() {
       setSubmitting(false);
     }
   }
+
+  // Poll video status when we have a scene_id
+  const pollVideoStatus = useCallback(async () => {
+    if (!result?.scene_id || result.status === "completed" || result.status === "failed") return;
+    try {
+      const res = await fetch(`/api/scenes/${result.scene_id}/video-status`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const scene = data.scene;
+      if (scene?.status === "completed" && scene?.video_url) {
+        setResult((prev) => prev ? { ...prev, status: "completed", video_url: scene.video_url } : prev);
+      } else if (scene?.status === "approved" && scene?.error_message) {
+        setResult((prev) => prev ? { ...prev, status: "failed" } : prev);
+      }
+    } catch {
+      // Ignore polling errors
+    }
+  }, [result?.scene_id, result?.status]);
+
+  useEffect(() => {
+    if (!result?.scene_id || result.status === "completed" || result.status === "failed") return;
+    // Poll immediately, then every 15s
+    pollVideoStatus();
+    const interval = setInterval(pollVideoStatus, 15_000);
+    return () => clearInterval(interval);
+  }, [result?.scene_id, result?.status, pollVideoStatus]);
 
   const startReady = !!startImageUrl;
   const canSubmit = startReady && !!movementPrompt.trim() && !submitting;
@@ -411,15 +439,71 @@ export default function VideoSubmitPage() {
 
         {/* Result */}
         {result && (
-          <div className="space-y-3 rounded-xl border border-slate-800 bg-slate-900 p-6">
-            <h3 className="text-sm font-semibold text-white">Video Enviado</h3>
-            <p className="text-xs text-slate-400">
-              Request ID: <code className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-emerald-400">{result.request_id}</code>
-            </p>
-            <p className="text-xs text-slate-500">
-              Acompanhe o status na secao Batch ou aguarde o resultado aparecer na Galeria.
-            </p>
-            {result.video_url && <VideoPlayer url={result.video_url} title="Video Direto" />}
+          <div className={`space-y-3 rounded-xl border p-6 ${
+            result.status === "completed"
+              ? "border-emerald-700 bg-emerald-900/20"
+              : result.status === "failed"
+                ? "border-red-700 bg-red-900/20"
+                : "border-blue-700 bg-blue-900/20"
+          }`}>
+            {result.status === "completed" ? (
+              <>
+                <h3 className="text-sm font-semibold text-emerald-400">Video Concluido!</h3>
+                {result.video_url && <VideoPlayer url={result.video_url} title="Video Direto" />}
+                {result.scene_id && (
+                  <Link
+                    href={`/scenes/${result.scene_id}`}
+                    className="inline-block text-xs text-emerald-400 hover:text-emerald-300 hover:underline"
+                  >
+                    Ver na pagina da cena →
+                  </Link>
+                )}
+              </>
+            ) : result.status === "failed" ? (
+              <>
+                <h3 className="text-sm font-semibold text-red-400">Falha na geracao do video</h3>
+                <p className="text-xs text-red-300">
+                  Verifique os detalhes na pagina da cena.
+                </p>
+                {result.scene_id && (
+                  <Link
+                    href={`/scenes/${result.scene_id}`}
+                    className="inline-block text-xs text-red-400 hover:text-red-300 hover:underline"
+                  >
+                    Ver detalhes →
+                  </Link>
+                )}
+              </>
+            ) : (
+              <>
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-blue-400">
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-blue-400" />
+                  Video em producao...
+                </h3>
+                <p className="text-xs text-blue-300/70">
+                  O video esta sendo gerado. Esta pagina verifica o status automaticamente a cada 15 segundos.
+                </p>
+                <p className="text-xs text-slate-400">
+                  Request ID: <code className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-blue-400">{result.request_id}</code>
+                </p>
+                <div className="flex gap-3">
+                  {result.scene_id && (
+                    <Link
+                      href={`/scenes/${result.scene_id}`}
+                      className="text-xs text-blue-400 hover:text-blue-300 hover:underline"
+                    >
+                      Ver cena →
+                    </Link>
+                  )}
+                  <Link
+                    href="/batch"
+                    className="text-xs text-slate-400 hover:text-slate-300 hover:underline"
+                  >
+                    Monitor de Producao →
+                  </Link>
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
