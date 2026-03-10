@@ -251,8 +251,16 @@ export async function submitVideoGoogle(opts: {
     };
   }
 
-  const duration = opts.duration ?? 8;
-  const resolution = duration === 8 ? "1080p" : "720p";
+  // Veo 3.1 image-to-video only supports 8s duration.
+  // If an image is provided, force 8s regardless of user selection.
+  const hasImage = !!opts.startImageUrl;
+  const duration = hasImage ? 8 : (opts.duration ?? 8);
+
+  if (hasImage && opts.duration && opts.duration !== 8) {
+    console.log(
+      `[Veo] Image-to-video requer 8s. Duração solicitada (${opts.duration}s) foi ajustada para 8s.`
+    );
+  }
 
   const url = `${GEMINI_BASE}/models/${modelId}:predictLongRunning`;
 
@@ -266,8 +274,9 @@ export async function submitVideoGoogle(opts: {
       instances: [instance],
       parameters: {
         aspectRatio: "16:9",
-        resolution,
+        resolution: "720p",
         durationSeconds: duration,
+        sampleCount: 1,
       },
     }),
   });
