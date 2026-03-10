@@ -375,68 +375,51 @@ export async function getResultGoogle(
 
   const data = await res.json();
 
-  // Log full response structure for debugging
-  console.log("[Veo Result] Full response keys:", JSON.stringify(Object.keys(data)));
-  if (data.response) {
-    console.log("[Veo Result] response keys:", JSON.stringify(Object.keys(data.response)));
-    if (data.response.generateVideoResponse) {
-      console.log(
-        "[Veo Result] generateVideoResponse keys:",
-        JSON.stringify(Object.keys(data.response.generateVideoResponse))
-      );
-      const samples = data.response.generateVideoResponse.generatedSamples;
-      if (samples?.[0]) {
-        console.log("[Veo Result] sample[0] keys:", JSON.stringify(Object.keys(samples[0])));
-        if (samples[0].video) {
-          console.log("[Veo Result] video keys:", JSON.stringify(Object.keys(samples[0].video)));
-        }
-      }
-    }
-  }
-
-  // Extract video URL from response — try multiple paths
+  // Extract video URL from response
   let videoUrl: string | null = null;
+  let raiError: string | null = null;
 
-  // Path 1: Standard Veo response — response.generateVideoResponse.generatedSamples[0].video.uri
   const response = data.response as Record<string, unknown> | undefined;
   if (response) {
     const genResponse = response.generateVideoResponse as Record<string, unknown> | undefined;
     if (genResponse) {
+      // Check for RAI (Responsible AI) content filtering
+      const filteredCount = genResponse.raiMediaFilteredCount as number | undefined;
+      const filteredReasons = genResponse.raiMediaFilteredReasons as string[] | undefined;
+
+      if (filteredCount && filteredCount > 0 && filteredReasons?.length) {
+        raiError = `Bloqueado pelo filtro de seguranca do Google: ${filteredReasons.join("; ")}`;
+      }
+
+      // Extract video from generatedSamples
       const samples = genResponse.generatedSamples as Array<Record<string, unknown>> | undefined;
       if (samples?.[0]) {
         const video = samples[0].video as Record<string, unknown> | undefined;
 
         if (video?.uri) {
-          console.log("[Veo Result] Found video.uri, downloading...");
-          // The video URI requires the API key to download
-          // Download and upload to Vercel Blob for a permanent URL
+          // Download from Google URI and upload to Vercel Blob for permanent URL
           try {
             const videoRes = await fetch(video.uri as string, {
               headers: { "x-goog-api-key": apiKey },
             });
             if (videoRes.ok) {
               const videoBuffer = await videoRes.arrayBuffer();
-              console.log(`[Veo Result] Downloaded video: ${videoBuffer.byteLength} bytes`);
               const filename = `videos/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
               const blob = await put(filename, Buffer.from(videoBuffer), {
                 access: "public",
                 contentType: "video/mp4",
               });
               videoUrl = blob.url;
-              console.log(`[Veo Result] Uploaded to Blob: ${videoUrl}`);
             } else {
-              console.error(
-                `[Veo Result] Failed to download video from URI (${videoRes.status}): ${(video.uri as string).slice(0, 100)}...`
-              );
+              console.error(`[Veo] Download falhou (${videoRes.status})`);
             }
           } catch (dlErr) {
-            console.error("[Veo Result] Error downloading video:", dlErr);
+            console.error("[Veo] Erro ao baixar video:", dlErr);
           }
         }
 
-        // Path 2: Video might be base64 encoded (bytesBase64Encoded)
+        // Fallback: video as base64
         if (!videoUrl && video?.bytesBase64Encoded) {
-          console.log("[Veo Result] Found video.bytesBase64Encoded, uploading...");
           try {
             const buffer = Buffer.from(video.bytesBase64Encoded as string, "base64");
             const filename = `videos/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
@@ -445,58 +428,17 @@ export async function getResultGoogle(
               contentType: (video.mimeType as string) ?? "video/mp4",
             });
             videoUrl = blob.url;
-            console.log(`[Veo Result] Uploaded base64 video to Blob: ${videoUrl}`);
           } catch (b64Err) {
-            console.error("[Veo Result] Error uploading base64 video:", b64Err);
+            console.error("[Veo] Erro ao salvar video base64:", b64Err);
           }
         }
-      } else {
-        console.warn("[Veo Result] No generatedSamples found in response");
-      }
-    } else {
-      console.warn("[Veo Result] No generateVideoResponse found. Response keys:", JSON.stringify(Object.keys(response)));
-    }
-  } else {
-    console.warn("[Veo Result] No 'response' field in data. Top-level keys:", JSON.stringify(Object.keys(data)));
-  }
-
-  // Path 3: Maybe video is directly in data (fallback for unexpected structures)
-  if (!videoUrl) {
-    // Deep search for any 'uri' or 'video_url' field
-    const jsonStr = JSON.stringify(data);
-    const uriMatch = jsonStr.match(/"uri"\s*:\s*"(https?:\/\/[^"]+)"/);
-    if (uriMatch) {
-      console.log(`[Veo Result] Fallback: found URI via JSON search: ${uriMatch[1].slice(0, 100)}...`);
-      try {
-        const videoRes = await fetch(uriMatch[1], {
-          headers: { "x-goog-api-key": apiKey },
-        });
-        if (videoRes.ok) {
-          const videoBuffer = await videoRes.arrayBuffer();
-          const filename = `videos/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
-          const blob = await put(filename, Buffer.from(videoBuffer), {
-            access: "public",
-            contentType: "video/mp4",
-          });
-          videoUrl = blob.url;
-          console.log(`[Veo Result] Fallback upload success: ${videoUrl}`);
-        }
-      } catch {
-        // Ignore fallback errors
       }
     }
-  }
-
-  if (!videoUrl) {
-    // Log the full response (truncated) for debugging
-    console.error(
-      "[Veo Result] Could not extract video URL. Full response (truncated):",
-      JSON.stringify(data).slice(0, 2000)
-    );
   }
 
   return {
     ...data,
     video_url: videoUrl,
+    rai_error: raiError,
   };
 }

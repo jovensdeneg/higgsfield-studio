@@ -67,16 +67,37 @@ export async function GET(
                 : (first as Record<string, string>)?.url ?? null;
           }
 
+          // Check for RAI (content safety) filtering
+          const raiError = resultData.rai_error as string | undefined;
+
           if (videoUrl) {
             scene = await updateScene(id, {
               video_url: videoUrl,
               status: "completed",
               error_message: null,
             });
+          } else if (raiError) {
+            // Video was blocked by Google's content safety filters
+            scene = await updateScene(id, {
+              status: "approved",
+              request_id: null,
+              error_message: raiError,
+            });
+
+            return NextResponse.json({
+              scene,
+              video_status: { status: "failed", progress: 0 },
+            });
           } else {
             scene = await updateScene(id, {
-              status: "completed",
+              status: "approved",
+              request_id: null,
               error_message: "Video concluido mas URL nao encontrada no resultado.",
+            });
+
+            return NextResponse.json({
+              scene,
+              video_status: { status: "failed", progress: 0 },
             });
           }
         } catch (collectErr) {
