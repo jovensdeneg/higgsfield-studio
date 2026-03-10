@@ -95,23 +95,46 @@ export interface Character {
 
 let redis: Redis | null = null;
 
+/**
+ * Parse a standard redis:// or rediss:// URL into REST API credentials.
+ * Upstash REDIS_URL format: rediss://default:TOKEN@host:port
+ * REST URL: https://host
+ * REST Token: TOKEN (the password)
+ */
+function parseRedisUrl(redisUrl: string): { url: string; token: string } | null {
+  try {
+    const parsed = new URL(redisUrl);
+    const host = parsed.hostname;
+    const token = parsed.password;
+    if (host && token) {
+      return { url: `https://${host}`, token };
+    }
+  } catch {
+    // Not a valid URL
+  }
+  return null;
+}
+
 function getRedis(): Redis | null {
   if (redis) return redis;
 
-  // Support multiple env var naming conventions:
-  // - Vercel KV (legacy): KV_REST_API_URL / KV_REST_API_TOKEN
-  // - Upstash Redis integration: UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN
-  // - Custom prefix: REDIS_URL / REDIS_TOKEN
-  const url =
+  // Try explicit REST API env vars first
+  let url =
     process.env.KV_REST_API_URL ??
-    process.env.UPSTASH_REDIS_REST_URL ??
-    process.env.REDIS_REST_API_URL ??
-    process.env.REDIS_URL;
-  const token =
+    process.env.UPSTASH_REDIS_REST_URL;
+  let token =
     process.env.KV_REST_API_TOKEN ??
-    process.env.UPSTASH_REDIS_REST_TOKEN ??
-    process.env.REDIS_REST_API_TOKEN ??
-    process.env.REDIS_TOKEN;
+    process.env.UPSTASH_REDIS_REST_TOKEN;
+
+  // Fallback: parse REDIS_URL (rediss://default:TOKEN@host:port) into REST credentials
+  if ((!url || !token) && process.env.REDIS_URL) {
+    const parsed = parseRedisUrl(process.env.REDIS_URL);
+    if (parsed) {
+      url = parsed.url;
+      token = parsed.token;
+      console.log("[Store] Derived REST credentials from REDIS_URL");
+    }
+  }
 
   if (url && token) {
     try {
