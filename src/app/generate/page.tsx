@@ -211,6 +211,10 @@ export default function GeneratePage() {
           body.end_frame_num_variations = 2;
         }
 
+        if (scene.movementPrompt) {
+          body.movement_prompt = scene.movementPrompt;
+        }
+
         const res = await fetch("/api/scenes", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -525,14 +529,15 @@ export default function GeneratePage() {
               value={batchText}
               onChange={(e) => setBatchText(e.target.value)}
               disabled={batchLoading}
-              placeholder={`##image1\nPhotorealistic 4K, 16:9. A young Brazilian entrepreneur standing in a modern coworking space, golden hour light streaming through floor-to-ceiling windows, 35mm lens, shallow depth of field...\n\n##image2\nSame young entrepreneur now sitting at a minimalist desk, laptop open, warm ambient lighting from desk lamp, medium close-up shot, soft bokeh background...\n\n##image3\nAerial drone view of a bustling Brazilian city at sunset, skyscrapers reflecting warm orange light, wide-angle lens, dramatic clouds...\n\n##image4\nStreet-level view of the same city at night, neon signs glowing in Portuguese, motion blur of passing cars...`}
+              placeholder={`##image1\nPhotorealistic 4K, 16:9. A young Brazilian entrepreneur standing in a modern coworking space, golden hour light...\n\n##image2\nSame young entrepreneur now sitting at a minimalist desk, laptop open, warm ambient lighting...\n\n##scene1\nThe entrepreneur walks from the coworking space window to his desk, sits down and opens his laptop with determination...\n\n##image3\nAerial drone view of a bustling Brazilian city at sunset, skyscrapers reflecting warm orange light...\n\n##image4\nStreet-level view of the same city at night, neon signs glowing in Portuguese, motion blur...\n\n##scene2\nSmooth aerial descent from the city skyline transitioning to street level as day turns to night...`}
               className="w-full rounded-lg border border-slate-700 bg-slate-900 px-4 py-3 font-mono text-sm text-white placeholder-slate-600 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
             />
 
             <p className="text-xs text-slate-500">
               Use <code className="rounded bg-slate-800 px-1.5 py-0.5 text-emerald-400">##image1</code>,{" "}
-              <code className="rounded bg-slate-800 px-1.5 py-0.5 text-emerald-400">##image2</code>, etc.
-              para separar cada imagem. Imagens ímpares = frame inicial, pares = frame final da mesma cena.
+              <code className="rounded bg-slate-800 px-1.5 py-0.5 text-emerald-400">##image2</code> para frames e{" "}
+              <code className="rounded bg-slate-800 px-1.5 py-0.5 text-blue-400">##scene1</code> para o prompt do vídeo.
+              Imagens ímpares = frame inicial, pares = frame final. O end frame usa o start como referência visual.
             </p>
           </div>
 
@@ -594,6 +599,21 @@ export default function GeneratePage() {
                             <br />
                             <span className="italic text-slate-500">
                               Sem frame final
+                            </span>
+                          </>
+                        )}
+                        {scene.movementPrompt ? (
+                          <>
+                            <br />
+                            <span className="text-blue-400">Video:</span>{" "}
+                            {scene.movementPrompt.slice(0, 60)}
+                            {scene.movementPrompt.length > 60 ? "..." : ""}
+                          </>
+                        ) : (
+                          <>
+                            <br />
+                            <span className="italic text-slate-600">
+                              Sem prompt de vídeo (##scene{scene.sceneIndex + 1})
                             </span>
                           </>
                         )}

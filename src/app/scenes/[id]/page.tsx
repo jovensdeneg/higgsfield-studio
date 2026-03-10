@@ -85,10 +85,16 @@ const CAMERA_PRESETS = [
   "Dutch Angle",
 ];
 
-const IMAGE_MODELS = [
+const HIGGSFIELD_IMAGE_MODELS = [
   { value: "nano-banana-pro", label: "Nano Banana Pro" },
   { value: "flux-pro-kontext-max", label: "Flux Pro Kontext Max" },
   { value: "seedream-v4", label: "Seedream v4" },
+];
+
+const GOOGLE_IMAGE_MODELS = [
+  { value: "nano-banana-pro", label: "Nano Banana Pro" },
+  { value: "nano-banana-2", label: "Nano Banana 2 (Fast)" },
+  { value: "nano-banana", label: "Nano Banana" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -180,6 +186,36 @@ export default function SceneDetailPage() {
 
     if (sceneId) fetchScene();
   }, [sceneId]);
+
+  // ---- Pre-fill form from scene data ------------------------------------
+  useEffect(() => {
+    if (!scene) return;
+
+    // Pre-fill movement prompt from ##sceneN or previous edit
+    if (scene.movement_prompt && !movementPrompt) {
+      setMovementPrompt(scene.movement_prompt);
+    }
+
+    // Set provider-aware video defaults
+    if (scene.provider === "google") {
+      setVideoModel((prev) => {
+        const googleValues = GOOGLE_VIDEO_MODELS.map((m) => m.value);
+        return googleValues.includes(prev) ? prev : "veo-3.1";
+      });
+      setDuration((prev) => {
+        return GOOGLE_DURATIONS.includes(prev) ? prev : 8;
+      });
+    } else {
+      setVideoModel((prev) => {
+        const hfValues = HIGGSFIELD_VIDEO_MODELS.map((m) => m.value);
+        return hfValues.includes(prev) ? prev : "kling-3.0";
+      });
+      setDuration((prev) => {
+        return HIGGSFIELD_DURATIONS.includes(prev) ? prev : 5;
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scene]);
 
   // ---- Handlers -----------------------------------------------------------
 
@@ -433,7 +469,7 @@ export default function SceneDetailPage() {
                   className={inputClasses}
                 >
                   <option value="">Manter atual ({scene.model_image})</option>
-                  {IMAGE_MODELS.map((m) => (
+                  {(isGoogle ? GOOGLE_IMAGE_MODELS : HIGGSFIELD_IMAGE_MODELS).map((m) => (
                     <option key={m.value} value={m.value}>
                       {m.label}
                     </option>

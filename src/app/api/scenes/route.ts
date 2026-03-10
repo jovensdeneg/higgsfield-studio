@@ -28,6 +28,9 @@ export async function GET() {
  * POST /api/scenes
  * Generate a new scene with image variations (start frame + optional end frame).
  *
+ * Sequential generation: when end frame is requested, each end frame variation
+ * uses its corresponding start frame as visual reference for consistency.
+ *
  * Body: {
  *   prompt: string;
  *   model?: string;
@@ -38,6 +41,8 @@ export async function GET() {
  *   end_frame_model?: string;
  *   end_frame_num_variations?: number;
  *   end_frame_reference_images?: string[];
+ *   movement_prompt?: string;       // Pre-filled from ##sceneN in batch mode
+ *   provider?: "higgsfield" | "google";
  * }
  */
 export async function POST(request: NextRequest) {
@@ -54,6 +59,7 @@ export async function POST(request: NextRequest) {
       end_frame_model,
       end_frame_num_variations,
       end_frame_reference_images,
+      movement_prompt,
       provider,
     } = body as {
       prompt: string;
@@ -65,6 +71,7 @@ export async function POST(request: NextRequest) {
       end_frame_model?: string;
       end_frame_num_variations?: number;
       end_frame_reference_images?: string[];
+      movement_prompt?: string;
       provider?: "higgsfield" | "google";
     };
 
@@ -91,23 +98,21 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Generate START FRAME images
-    const generatedImages: { url: string; metadata?: Record<string, unknown> }[] = [];
-    for (let i = 0; i < variations; i++) {
-      const result = useGoogle
-        ? await generateImageGoogle(prompt, imageModel, allRefs.length > 0 ? allRefs : undefined)
-        : await generateImage(prompt, imageModel, allRefs.length > 0 ? allRefs : undefined);
-      generatedImages.push({ url: result.url, metadata: result.raw });
-    }
-
-    // Generate END FRAME images (optional)
-    const endFrameImages: { url: string; metadata?: Record<string, unknown> }[] = [];
+    const hasEndFrame = end_frame_prompt && end_frame_prompt.trim();
     const efModel = end_frame_model ?? imageModel;
-    const efVariations = end_frame_num_variations ?? variations;
 
-    if (end_frame_prompt && end_frame_prompt.trim()) {
+    // Determine variation count — for paired generation, use same count
+    const actualVariations = hasEndFrame
+      ? Math.min(variations, end_frame_num_variations ?? variations)
+      : variations;
+
+    const generatedImages: { url: string; metadata?: Record<string, unknown> }[] = [];
+    const endFrameImages: { url: string; metadata?: Record<string, unknown> }[] = [];
+
+    if (hasEndFrame) {
+      // ── SEQUENTIAL PAIRED GENERATION ──
+      // For each variation: generate start → use as reference → generate end
       let endRefs = [...(end_frame_reference_images ?? [])];
-      // Also include character photos for end frame consistency
       if (character_id) {
         const character = await getCharacter(character_id);
         if (character && character.photos.length > 0) {
@@ -116,11 +121,29 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      for (let i = 0; i < efVariations; i++) {
+      for (let i = 0; i < actualVariations; i++) {
+        // 1. Generate start frame
+        const startResult = useGoogle
+          ? await generateImageGoogle(prompt, imageModel, allRefs.length > 0 ? allRefs : undefined)
+          : await generateImage(prompt, imageModel, allRefs.length > 0 ? allRefs : undefined);
+        generatedImages.push({ url: startResult.url, metadata: startResult.raw });
+
+        // 2. Generate end frame using start frame as additional reference
+        // This ensures visual consistency between start and end frames
+        const endRefsWithStart = [startResult.url, ...endRefs];
+
+        const endResult = useGoogle
+          ? await generateImageGoogle(end_frame_prompt.trim(), efModel, endRefsWithStart)
+          : await generateImage(end_frame_prompt.trim(), efModel, endRefsWithStart);
+        endFrameImages.push({ url: endResult.url, metadata: endResult.raw });
+      }
+    } else {
+      // ── STANDARD GENERATION (start frames only) ──
+      for (let i = 0; i < actualVariations; i++) {
         const result = useGoogle
-          ? await generateImageGoogle(end_frame_prompt.trim(), efModel, endRefs.length > 0 ? endRefs : undefined)
-          : await generateImage(end_frame_prompt.trim(), efModel, endRefs.length > 0 ? endRefs : undefined);
-        endFrameImages.push({ url: result.url, metadata: result.raw });
+          ? await generateImageGoogle(prompt, imageModel, allRefs.length > 0 ? allRefs : undefined)
+          : await generateImage(prompt, imageModel, allRefs.length > 0 ? allRefs : undefined);
+        generatedImages.push({ url: result.url, metadata: result.raw });
       }
     }
 
@@ -135,7 +158,7 @@ export async function POST(request: NextRequest) {
       approved_image_index: null,
       reference_images: allRefs,
       character_id: character_id ?? null,
-      movement_prompt: null,
+      movement_prompt: movement_prompt?.trim() ?? null,
       optimized_movement_prompt: null,
       end_frame_prompt: end_frame_prompt?.trim() ?? null,
       end_frame_optimized_prompt: end_frame_prompt?.trim() ?? null,

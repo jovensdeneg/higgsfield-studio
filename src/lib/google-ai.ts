@@ -16,7 +16,7 @@ import type { HFImageResult, HFSubmission, HFStatus } from "./higgsfield";
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
 
 // ---------------------------------------------------------------------------
-// Modelos
+// Modelos (com fallback chain)
 // ---------------------------------------------------------------------------
 
 export const GOOGLE_IMAGE_MODELS: Record<string, string> = {
@@ -24,6 +24,13 @@ export const GOOGLE_IMAGE_MODELS: Record<string, string> = {
   "nano-banana-2": "gemini-3.1-flash-image-preview",
   "nano-banana": "gemini-2.5-flash-image",
 };
+
+// Fallback: se o modelo preferido falhar, tenta os outros
+const IMAGE_MODEL_FALLBACKS: string[] = [
+  "gemini-2.5-flash-image",
+  "gemini-3.1-flash-image-preview",
+  "gemini-3-pro-image-preview",
+];
 
 export const GOOGLE_VIDEO_MODELS: Record<string, string> = {
   "veo-3.1": "veo-3.1-generate-preview",
@@ -49,6 +56,7 @@ function getApiKey(): string {
 /**
  * Gera imagem com Nano Banana (Gemini Image) via generateContent.
  * Suporta referências visuais como input multimodal (fotos de personagem).
+ * Tenta modelo preferido → fallback automático se falhar.
  */
 export async function generateImageGoogle(
   prompt: string,
@@ -56,7 +64,7 @@ export async function generateImageGoogle(
   referenceImages?: string[]
 ): Promise<HFImageResult> {
   const apiKey = getApiKey();
-  const modelId = GOOGLE_IMAGE_MODELS[model] ?? GOOGLE_IMAGE_MODELS["nano-banana-pro"];
+  const preferredModelId = GOOGLE_IMAGE_MODELS[model] ?? GOOGLE_IMAGE_MODELS["nano-banana-pro"];
 
   // Build multimodal parts
   const parts: Array<Record<string, unknown>> = [];
@@ -88,61 +96,98 @@ export async function generateImageGoogle(
     });
   }
 
-  const url = `${GEMINI_BASE}/models/${modelId}:generateContent`;
+  // Try preferred model, then fallbacks
+  const modelsToTry = [
+    preferredModelId,
+    ...IMAGE_MODEL_FALLBACKS.filter((m) => m !== preferredModelId),
+  ];
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-goog-api-key": apiKey,
-    },
-    body: JSON.stringify({
-      contents: [{ parts }],
-      generationConfig: {
-        responseModalities: ["IMAGE", "TEXT"],
+  let lastError = "";
+
+  for (const modelId of modelsToTry) {
+    const url = `${GEMINI_BASE}/models/${modelId}:generateContent`;
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": apiKey,
       },
-    }),
-  });
+      body: JSON.stringify({
+        contents: [{ parts }],
+        generationConfig: {
+          responseModalities: ["IMAGE", "TEXT"],
+          imageConfig: {
+            aspectRatio: "16:9",
+          },
+        },
+      }),
+    });
 
-  if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    throw new Error(`Nano Banana error (${res.status}): ${errText}`);
-  }
+    if (!res.ok) {
+      lastError = await res.text().catch(() => "");
+      // If 404 or model not found, try next model
+      if (res.status === 404 || res.status === 400) {
+        console.log(`[Nano Banana] Modelo ${modelId} falhou (${res.status}), tentando próximo...`);
+        continue;
+      }
+      throw new Error(`Nano Banana error (${res.status}) [modelo: ${modelId}]: ${lastError}`);
+    }
 
-  const data = await res.json();
+    const data = await res.json();
 
-  // Extract generated image from response parts
-  const candidates = data.candidates ?? [];
-  if (candidates.length === 0) {
-    throw new Error("Nano Banana: nenhum candidato na resposta");
-  }
+    // Extract generated image from response parts
+    const candidates = data.candidates ?? [];
+    if (candidates.length === 0) {
+      console.log(`[Nano Banana] Modelo ${modelId}: nenhum candidato, tentando próximo...`);
+      lastError = "nenhum candidato na resposta";
+      continue;
+    }
 
-  const responseParts = candidates[0]?.content?.parts ?? [];
-  let base64Data: string | null = null;
-  let mimeType = "image/png";
+    const responseParts = candidates[0]?.content?.parts ?? [];
+    let base64Data: string | null = null;
+    let mimeType = "image/png";
 
-  for (const part of responseParts) {
-    if (part.inlineData?.data) {
-      base64Data = part.inlineData.data;
-      mimeType = part.inlineData.mimeType ?? "image/png";
-      break;
+    for (const part of responseParts) {
+      if (part.inlineData?.data) {
+        base64Data = part.inlineData.data;
+        mimeType = part.inlineData.mimeType ?? "image/png";
+        break;
+      }
+    }
+
+    if (!base64Data) {
+      console.log(`[Nano Banana] Modelo ${modelId}: sem imagem na resposta, tentando próximo...`);
+      lastError = "resposta sem dados de imagem";
+      continue;
+    }
+
+    // Upload to Vercel Blob
+    try {
+      const buffer = Buffer.from(base64Data, "base64");
+      const filename = `nano-banana/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+
+      const blob = await put(filename, buffer, {
+        access: "public",
+        contentType: mimeType,
+      });
+
+      return { url: blob.url, raw: { ...data, model: modelId } };
+    } catch (blobError) {
+      const blobMsg = blobError instanceof Error ? blobError.message : String(blobError);
+      if (blobMsg.includes("BLOB_READ_WRITE_TOKEN") || blobMsg.includes("token") || blobMsg.includes("unauthorized")) {
+        throw new Error(
+          `Vercel Blob não configurado. Crie um Blob Store no dashboard da Vercel (Storage → Create → Blob) para obter o BLOB_READ_WRITE_TOKEN. Erro: ${blobMsg}`
+        );
+      }
+      throw new Error(`Erro ao salvar imagem no Vercel Blob: ${blobMsg}`);
     }
   }
 
-  if (!base64Data) {
-    throw new Error("Nano Banana: resposta sem dados de imagem gerada");
-  }
-
-  // Upload to Vercel Blob
-  const buffer = Buffer.from(base64Data, "base64");
-  const filename = `nano-banana/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
-
-  const blob = await put(filename, buffer, {
-    access: "public",
-    contentType: mimeType,
-  });
-
-  return { url: blob.url, raw: { ...data, model: modelId } };
+  // All models failed
+  throw new Error(
+    `Nano Banana: todos os modelos falharam. Último erro: ${lastError}. Modelos tentados: ${modelsToTry.join(", ")}`
+  );
 }
 
 // ---------------------------------------------------------------------------
