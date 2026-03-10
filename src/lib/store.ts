@@ -98,14 +98,32 @@ let redis: Redis | null = null;
 function getRedis(): Redis | null {
   if (redis) return redis;
 
-  const url = process.env.KV_REST_API_URL;
-  const token = process.env.KV_REST_API_TOKEN;
+  // Support multiple env var naming conventions:
+  // - Vercel KV (legacy): KV_REST_API_URL / KV_REST_API_TOKEN
+  // - Upstash Redis integration: UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN
+  // - Custom prefix: REDIS_URL / REDIS_TOKEN
+  const url =
+    process.env.KV_REST_API_URL ??
+    process.env.UPSTASH_REDIS_REST_URL ??
+    process.env.REDIS_REST_API_URL ??
+    process.env.REDIS_URL;
+  const token =
+    process.env.KV_REST_API_TOKEN ??
+    process.env.UPSTASH_REDIS_REST_TOKEN ??
+    process.env.REDIS_REST_API_TOKEN ??
+    process.env.REDIS_TOKEN;
 
   if (url && token) {
-    redis = new Redis({ url, token });
-    return redis;
+    try {
+      redis = new Redis({ url, token });
+      return redis;
+    } catch (err) {
+      console.error("[Store] Failed to initialize Redis:", err);
+      return null;
+    }
   }
 
+  console.warn("[Store] No Redis credentials found, using in-memory fallback (data will be lost on redeploy).");
   return null;
 }
 
