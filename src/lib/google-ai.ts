@@ -267,7 +267,7 @@ export async function submitVideoGoogle(opts: {
       parameters: {
         aspectRatio: "16:9",
         resolution,
-        durationSeconds: String(duration),
+        durationSeconds: duration,
       },
     }),
   });
