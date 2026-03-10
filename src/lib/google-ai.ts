@@ -233,14 +233,12 @@ export async function submitVideoGoogle(opts: {
   // Download start frame as base64
   const startImage = await imageUrlToBase64(opts.startImageUrl);
 
-  // Build instance
+  // Build instance — Veo uses bytesBase64Encoded (NOT inlineData)
   const instance: Record<string, unknown> = {
     prompt: opts.prompt,
     image: {
-      inlineData: {
-        mimeType: startImage.mimeType,
-        data: startImage.data,
-      },
+      bytesBase64Encoded: startImage.data,
+      mimeType: startImage.mimeType,
     },
   };
 
@@ -248,10 +246,8 @@ export async function submitVideoGoogle(opts: {
   if (opts.endImageUrl) {
     const endImage = await imageUrlToBase64(opts.endImageUrl);
     instance.lastFrame = {
-      inlineData: {
-        mimeType: endImage.mimeType,
-        data: endImage.data,
-      },
+      bytesBase64Encoded: endImage.data,
+      mimeType: endImage.mimeType,
     };
   }
 
