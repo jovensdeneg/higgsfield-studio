@@ -1,11 +1,12 @@
 /**
  * Store de cenas e batches.
  *
- * Usa Upstash Redis (via @upstash/redis) quando KV_REST_API_URL está configurado.
+ * Usa Redis (via ioredis) quando REDIS_URL está configurado.
+ * Suporta Redis Cloud, Upstash, ou qualquer Redis padrão.
  * Fallback para Map em memória para desenvolvimento local.
  */
 
-import { Redis } from "@upstash/redis";
+import IORedis from "ioredis";
 
 // ---------------------------------------------------------------------------
 // Tipos
@@ -90,55 +91,29 @@ export interface Character {
 }
 
 // ---------------------------------------------------------------------------
-// Redis client (lazy init)
+// Redis client (lazy init) — supports Redis Cloud, Upstash, any standard Redis
 // ---------------------------------------------------------------------------
 
-let redis: Redis | null = null;
+let redis: IORedis | null = null;
 
-/**
- * Parse a standard redis:// or rediss:// URL into REST API credentials.
- * Upstash REDIS_URL format: rediss://default:TOKEN@host:port
- * REST URL: https://host
- * REST Token: TOKEN (the password)
- */
-function parseRedisUrl(redisUrl: string): { url: string; token: string } | null {
-  try {
-    const parsed = new URL(redisUrl);
-    const host = parsed.hostname;
-    const token = parsed.password;
-    if (host && token) {
-      return { url: `https://${host}`, token };
-    }
-  } catch {
-    // Not a valid URL
-  }
-  return null;
-}
-
-function getRedis(): Redis | null {
+function getRedis(): IORedis | null {
   if (redis) return redis;
 
-  // Try explicit REST API env vars first
-  let url =
-    process.env.KV_REST_API_URL ??
-    process.env.UPSTASH_REDIS_REST_URL;
-  let token =
-    process.env.KV_REST_API_TOKEN ??
-    process.env.UPSTASH_REDIS_REST_TOKEN;
+  const redisUrl = process.env.REDIS_URL;
 
-  // Fallback: parse REDIS_URL (rediss://default:TOKEN@host:port) into REST credentials
-  if ((!url || !token) && process.env.REDIS_URL) {
-    const parsed = parseRedisUrl(process.env.REDIS_URL);
-    if (parsed) {
-      url = parsed.url;
-      token = parsed.token;
-      console.log("[Store] Derived REST credentials from REDIS_URL");
-    }
-  }
-
-  if (url && token) {
+  if (redisUrl) {
     try {
-      redis = new Redis({ url, token });
+      redis = new IORedis(redisUrl, {
+        maxRetriesPerRequest: 3,
+        connectTimeout: 5000,
+        lazyConnect: false,
+        // TLS is handled automatically by rediss:// scheme in ioredis
+      });
+
+      redis.on("error", (err) => {
+        console.error("[Store] Redis error:", err.message);
+      });
+
       return redis;
     } catch (err) {
       console.error("[Store] Failed to initialize Redis:", err);
@@ -146,7 +121,7 @@ function getRedis(): Redis | null {
     }
   }
 
-  console.warn("[Store] No Redis credentials found, using in-memory fallback (data will be lost on redeploy).");
+  console.warn("[Store] No REDIS_URL found, using in-memory fallback (data will be lost on redeploy).");
   return null;
 }
 
@@ -175,28 +150,6 @@ async function kv_del(key: string): Promise<void> {
   } else {
     memoryStore.delete(key);
   }
-}
-
-async function kv_keys(pattern: string): Promise<string[]> {
-  const r = getRedis();
-  if (r) {
-    // Upstash scan com pattern
-    const keys: string[] = [];
-    let cursor = 0;
-    do {
-      const result = await r.scan(cursor, {
-        match: pattern,
-        count: 100,
-      });
-      cursor = Number(result[0]);
-      keys.push(...(result[1] as string[]));
-    } while (cursor !== 0);
-    return keys;
-  }
-
-  // Fallback: filtrar por prefixo no Map
-  const prefix = pattern.replace("*", "");
-  return Array.from(memoryStore.keys()).filter((k) => k.startsWith(prefix));
 }
 
 // ---------------------------------------------------------------------------
