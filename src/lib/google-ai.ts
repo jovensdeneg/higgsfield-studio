@@ -106,35 +106,51 @@ export async function generateImageGoogle(
 
   for (const modelId of modelsToTry) {
     const url = `${GEMINI_BASE}/models/${modelId}:generateContent`;
-
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": apiKey,
-      },
-      body: JSON.stringify({
-        contents: [{ parts }],
-        generationConfig: {
-          responseModalities: ["IMAGE", "TEXT"],
-          imageConfig: {
-            aspectRatio: "16:9",
-          },
+    const requestBody = JSON.stringify({
+      contents: [{ parts }],
+      generationConfig: {
+        responseModalities: ["IMAGE", "TEXT"],
+        imageConfig: {
+          aspectRatio: "16:9",
         },
-      }),
+      },
     });
 
-    if (!res.ok) {
-      lastError = await res.text().catch(() => "");
-      // If 404 or model not found, try next model
-      if (res.status === 404 || res.status === 400) {
-        console.log(`[Nano Banana] Modelo ${modelId} falhou (${res.status}), tentando próximo...`);
-        continue;
+    // Retry transient errors (503, 429) up to 2 times with short delay
+    let res: Response | null = null;
+    const MAX_RETRIES = 2;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": apiKey,
+        },
+        body: requestBody,
+      });
+
+      if (res.ok || ![429, 503].includes(res.status)) break;
+
+      // Transient error — wait and retry before falling back
+      if (attempt < MAX_RETRIES) {
+        const wait = (attempt + 1) * 3000; // 3s, 6s
+        console.log(`[Nano Banana] ${modelId} retornou ${res.status}, retry ${attempt + 1}/${MAX_RETRIES} em ${wait / 1000}s...`);
+        await new Promise((r) => setTimeout(r, wait));
       }
-      throw new Error(`Nano Banana error (${res.status}) [modelo: ${modelId}]: ${lastError}`);
     }
 
-    const data = await res.json();
+    if (!res!.ok) {
+      lastError = await res!.text().catch(() => "");
+      // Retry-able errors: try next model in fallback chain
+      const retryable = [400, 404, 429, 500, 503];
+      if (retryable.includes(res!.status)) {
+        console.log(`[Nano Banana] Modelo ${modelId} falhou (${res!.status}) após retries, tentando próximo...`);
+        continue;
+      }
+      throw new Error(`Nano Banana error (${res!.status}) [modelo: ${modelId}]: ${lastError}`);
+    }
+
+    const data = await res!.json();
 
     // Extract generated image from response parts
     const candidates = data.candidates ?? [];
@@ -186,7 +202,10 @@ export async function generateImageGoogle(
 
   // All models failed
   throw new Error(
-    `Nano Banana: todos os modelos falharam. Último erro: ${lastError}. Modelos tentados: ${modelsToTry.join(", ")}`
+    `Nano Banana: todos os modelos estão indisponíveis no momento. ` +
+    `Isso geralmente é temporário — tente novamente em alguns minutos. ` +
+    `Último erro: ${lastError.slice(0, 200)}. ` +
+    `Modelos tentados: ${modelsToTry.join(", ")}`
   );
 }
 
