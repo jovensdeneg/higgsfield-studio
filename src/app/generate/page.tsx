@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import CharacterSelector from "@/components/CharacterSelector";
@@ -80,6 +80,35 @@ export default function GeneratePage() {
   // ── Shared state ──
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // ── Elapsed time counter ──
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const isAnyLoading = loading || batchLoading;
+
+  useEffect(() => {
+    if (isAnyLoading) {
+      setElapsedSeconds(0);
+      timerRef.current = setInterval(() => {
+        setElapsedSeconds((s) => s + 1);
+      }, 1000);
+    } else {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    }
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [isAnyLoading]);
+
+  function formatElapsed(secs: number) {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return m > 0 ? `${m}m ${s.toString().padStart(2, "0")}s` : `${s}s`;
+  }
 
   // ── Reset models when provider changes ──
   useEffect(() => {
@@ -472,10 +501,23 @@ export default function GeneratePage() {
           </button>
 
           {loading && (
-            <p className="text-center text-xs text-slate-500">
-              Isso pode levar alguns minutos. Cada variação é gerada
-              separadamente.
-            </p>
+            <div className="rounded-xl border border-blue-700/50 bg-blue-900/20 p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-blue-400">
+                  <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-blue-400" />
+                  Gerando imagens...
+                </h3>
+                <span className="font-mono text-lg font-bold text-blue-400">
+                  {formatElapsed(elapsedSeconds)}
+                </span>
+              </div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
+                <div className="h-full w-full animate-[loading_2s_ease-in-out_infinite] rounded-full bg-gradient-to-r from-blue-600 via-blue-400 to-blue-600 bg-[length:200%_100%]" />
+              </div>
+              <p className="text-xs text-blue-300/70">
+                Cada variacao pode demorar de 30 segundos a 2 minutos. Nao feche esta pagina.
+              </p>
+            </div>
           )}
         </form>
       )}
@@ -645,14 +687,20 @@ export default function GeneratePage() {
 
           {/* Progress */}
           {batchLoading && (
-            <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-5 space-y-4">
+            <div className="rounded-xl border border-blue-700/50 bg-blue-900/20 p-5 space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-white">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-blue-400">
+                  <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-blue-400" />
                   Gerando em Lote...
                 </h3>
-                <span className="text-2xl font-bold text-emerald-400">
-                  {batchPercent}%
-                </span>
+                <div className="text-right">
+                  <span className="text-2xl font-bold text-emerald-400">
+                    {batchPercent}%
+                  </span>
+                  <p className="font-mono text-xs text-blue-400">
+                    {formatElapsed(elapsedSeconds)}
+                  </p>
+                </div>
               </div>
 
               {/* Progress bar */}
@@ -663,14 +711,18 @@ export default function GeneratePage() {
                 />
               </div>
 
-              <p className="text-sm text-slate-400">{batchMessage}</p>
+              <p className="text-sm text-white font-medium">{batchMessage}</p>
 
-              <div className="flex items-center gap-4 text-xs text-slate-500">
+              <div className="flex items-center justify-between text-xs text-slate-400">
                 <span>
-                  Cena {batchCurrentScene} de {batchTotalScenes}
+                  Cena {batchCurrentScene} de {batchTotalScenes} | 2 variacoes por imagem
                 </span>
-                <span>2 variações por imagem</span>
+                <span>Nao feche esta pagina</span>
               </div>
+
+              <p className="text-xs text-blue-300/60">
+                Cada cena pode demorar de 1 a 3 minutos (geracao + polling da API).
+              </p>
             </div>
           )}
 

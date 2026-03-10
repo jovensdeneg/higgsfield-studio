@@ -35,3 +35,9 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #475569;
 }
+
+/* Indeterminate progress bar animation */
+@keyframes loading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
