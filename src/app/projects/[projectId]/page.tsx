@@ -21,6 +21,7 @@ interface Asset {
   image_url: string | null;
   video_url: string | null;
   error_message: string | null;
+  review_notes: string | null;
 }
 
 interface Project {
@@ -111,6 +112,12 @@ export default function ProjectDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [dispatching, setDispatching] = useState<"images" | "videos" | null>(
+    null
+  );
+  const [dispatchResult, setDispatchResult] = useState<string | null>(null);
+  const [rejectNotes, setRejectNotes] = useState<Record<string, string>>({});
+  const [showRejectInput, setShowRejectInput] = useState<string | null>(null);
 
   // Filters
   const [sceneFilter, setSceneFilter] = useState<string>("all");
@@ -201,12 +208,16 @@ export default function ProjectDashboardPage() {
   async function handleApprove(assetId: string) {
     setActionLoading(assetId);
     try {
-      await fetch(`/api/projects/${projectId}/assets/${assetId}/approve`, {
+      const res = await fetch(`/api/assets/${assetId}/approve`, {
         method: "POST",
       });
-      setAssets((prev) =>
-        prev.map((a) => (a.id === assetId ? { ...a, status: "approved" } : a))
-      );
+      if (res.ok) {
+        setAssets((prev) =>
+          prev.map((a) =>
+            a.id === assetId ? { ...a, status: "approved" } : a
+          )
+        );
+      }
     } catch {
       /* ignore */
     }
@@ -214,19 +225,140 @@ export default function ProjectDashboardPage() {
   }
 
   async function handleReject(assetId: string) {
+    const notes = rejectNotes[assetId]?.trim();
+    if (!notes || notes.length < 5) return;
     setActionLoading(assetId);
     try {
-      await fetch(`/api/projects/${projectId}/assets/${assetId}/reject`, {
+      const res = await fetch(`/api/assets/${assetId}/reject`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ review_notes: notes }),
       });
-      setAssets((prev) =>
-        prev.map((a) => (a.id === assetId ? { ...a, status: "rejected" } : a))
-      );
+      if (res.ok) {
+        setAssets((prev) =>
+          prev.map((a) =>
+            a.id === assetId ? { ...a, status: "rejected" } : a
+          )
+        );
+        setShowRejectInput(null);
+        setRejectNotes((prev) => {
+          const next = { ...prev };
+          delete next[assetId];
+          return next;
+        });
+      }
     } catch {
       /* ignore */
     }
     setActionLoading(null);
   }
+
+  async function handleRegenerate(assetId: string) {
+    setActionLoading(assetId);
+    try {
+      const res = await fetch(`/api/assets/${assetId}/regenerate`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        setAssets((prev) =>
+          prev.map((a) =>
+            a.id === assetId
+              ? { ...a, status: "pending", image_url: null, video_url: null, error_message: null }
+              : a
+          )
+        );
+      }
+    } catch {
+      /* ignore */
+    }
+    setActionLoading(null);
+  }
+
+  async function handleDispatchImages() {
+    const pendingIds = assets
+      .filter((a) => a.status === "pending" && a.prompt_image)
+      .map((a) => a.id);
+    if (pendingIds.length === 0) {
+      setDispatchResult("Nenhum asset pendente com prompt de imagem.");
+      return;
+    }
+    setDispatching("images");
+    setDispatchResult(null);
+    try {
+      const res = await fetch("/api/dispatch/images", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assetIds: pendingIds }),
+      });
+      const data = await res.json();
+      setDispatchResult(
+        `Imagens: ${data.dispatched ?? 0} geradas, ${data.failed ?? 0} falhas, ${data.skipped ?? 0} ignoradas`
+      );
+    } catch (err) {
+      setDispatchResult(
+        `Erro: ${err instanceof Error ? err.message : "falha no dispatch"}`
+      );
+    }
+    setDispatching(null);
+  }
+
+  async function handleDispatchVideos() {
+    const approvedIds = assets
+      .filter((a) => a.status === "approved" && a.image_url)
+      .map((a) => a.id);
+    if (approvedIds.length === 0) {
+      setDispatchResult("Nenhum asset aprovado com imagem pronta.");
+      return;
+    }
+    setDispatching("videos");
+    setDispatchResult(null);
+    try {
+      const res = await fetch("/api/dispatch/videos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assetIds: approvedIds }),
+      });
+      const data = await res.json();
+      setDispatchResult(
+        `Vídeos: ${data.dispatched ?? 0} enviados, ${data.failed ?? 0} falhas, ${data.skipped ?? 0} ignorados`
+      );
+    } catch (err) {
+      setDispatchResult(
+        `Erro: ${err instanceof Error ? err.message : "falha no dispatch"}`
+      );
+    }
+    setDispatching(null);
+  }
+
+  async function handlePollJobs() {
+    try {
+      const res = await fetch("/api/jobs/poll", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId }),
+      });
+      const data = await res.json();
+      if (data.completed > 0 || data.failed > 0) {
+        setDispatchResult(
+          `Poll: ${data.completed} concluídos, ${data.failed} falhos, ${data.running} em progresso`
+        );
+        // Refresh to get updated URLs
+        fetchProject();
+      }
+    } catch {
+      /* silent */
+    }
+  }
+
+  // Auto-poll running jobs every 15s
+  useEffect(() => {
+    const hasRunning = assets.some((a) => a.status === "generating");
+    if (!hasRunning) return;
+
+    const interval = setInterval(handlePollJobs, 15000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assets, projectId]);
 
   if (loading) {
     return (
@@ -303,29 +435,56 @@ export default function ProjectDashboardPage() {
             {project?.name ?? "Projeto"}
           </h1>
         </div>
-        <button
-          className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500"
-          onClick={() => {
-            fetch(`/api/projects/${projectId}/dispatch-images`, {
-              method: "POST",
-            });
-          }}
-        >
-          <svg
-            className="h-4 w-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            strokeWidth={2}
-            stroke="currentColor"
+        <div className="flex items-center gap-2">
+          <button
+            className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500 disabled:opacity-50"
+            onClick={handleDispatchImages}
+            disabled={dispatching !== null}
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M15.59 14.37a6 6 0 0 1-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 0 0 6.16-12.12A14.98 14.98 0 0 0 9.631 8.41m5.96 5.96a14.926 14.926 0 0 1-5.841 2.58m-.119-8.54a6 6 0 0 0-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 0 0-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 0 1-2.448-2.448 14.9 14.9 0 0 1 .06-.312m-2.24 2.39a4.493 4.493 0 0 0-1.757 4.306 4.493 4.493 0 0 0 4.306-1.758M16.5 9a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z"
-            />
-          </svg>
-          Dispatch Imagens
-        </button>
+            {dispatching === "images" ? (
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+            ) : (
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={2}
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z"
+                />
+              </svg>
+            )}
+            Gerar Imagens {pendingCount > 0 && `(${pendingCount})`}
+          </button>
+          <button
+            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-50"
+            onClick={handleDispatchVideos}
+            disabled={dispatching !== null}
+          >
+            {dispatching === "videos" ? (
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+            ) : (
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={2}
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="m15.75 10.5 4.72-4.72a.75.75 0 0 1 1.28.53v11.38a.75.75 0 0 1-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 0 0 2.25-2.25v-9a2.25 2.25 0 0 0-2.25-2.25h-9A2.25 2.25 0 0 0 2.25 7.5v9a2.25 2.25 0 0 0 2.25 2.25Z"
+                />
+              </svg>
+            )}
+            Gerar Vídeos {approvedCount > 0 && `(${approvedCount})`}
+          </button>
+        </div>
       </div>
 
       {/* Stats Bar */}
@@ -368,6 +527,19 @@ export default function ProjectDashboardPage() {
           </>
         )}
       </div>
+
+      {/* Dispatch Result Toast */}
+      {dispatchResult && (
+        <div className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800 px-4 py-3">
+          <p className="text-sm text-slate-300">{dispatchResult}</p>
+          <button
+            onClick={() => setDispatchResult(null)}
+            className="ml-4 text-xs text-slate-500 hover:text-slate-300"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Filter Pills */}
       <div className="flex flex-wrap items-center gap-4">
@@ -530,33 +702,94 @@ export default function ProjectDashboardPage() {
 
                 {/* Actions for "ready" assets */}
                 {asset.status === "ready" && (
-                  <div className="mt-3 flex gap-2">
+                  <div className="mt-3 space-y-2">
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleApprove(asset.id)}
+                        disabled={actionLoading === asset.id}
+                        className="flex-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-emerald-500 disabled:opacity-50"
+                      >
+                        {actionLoading === asset.id ? (
+                          <div className="mx-auto h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                        ) : (
+                          "Aprovar"
+                        )}
+                      </button>
+                      <button
+                        onClick={() =>
+                          setShowRejectInput(
+                            showRejectInput === asset.id ? null : asset.id
+                          )
+                        }
+                        disabled={actionLoading === asset.id}
+                        className="flex-1 rounded-lg border border-red-700/50 bg-red-900/20 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-900/40 disabled:opacity-50"
+                      >
+                        Rejeitar
+                      </button>
+                    </div>
+                    {showRejectInput === asset.id && (
+                      <div className="flex gap-1.5">
+                        <input
+                          type="text"
+                          placeholder="Motivo da rejeição..."
+                          value={rejectNotes[asset.id] ?? ""}
+                          onChange={(e) =>
+                            setRejectNotes((prev) => ({
+                              ...prev,
+                              [asset.id]: e.target.value,
+                            }))
+                          }
+                          className="flex-1 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:border-red-600 focus:outline-none"
+                        />
+                        <button
+                          onClick={() => handleReject(asset.id)}
+                          disabled={
+                            actionLoading === asset.id ||
+                            (rejectNotes[asset.id]?.trim().length ?? 0) < 5
+                          }
+                          className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-500 disabled:opacity-50"
+                        >
+                          Enviar
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Regenerate for failed/rejected assets */}
+                {(asset.status === "failed" ||
+                  asset.status === "rejected") && (
+                  <div className="mt-3">
+                    {asset.status === "failed" && asset.error_message && (
+                      <p className="mb-2 text-[10px] text-red-400/80">
+                        {asset.error_message}
+                      </p>
+                    )}
+                    {asset.status === "rejected" && asset.review_notes && (
+                      <p className="mb-2 text-[10px] text-red-400/80">
+                        Nota: {asset.review_notes}
+                      </p>
+                    )}
                     <button
-                      onClick={() => handleApprove(asset.id)}
+                      onClick={() => handleRegenerate(asset.id)}
                       disabled={actionLoading === asset.id}
-                      className="flex-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-emerald-500 disabled:opacity-50"
+                      className="w-full rounded-lg border border-amber-700/50 bg-amber-900/20 px-3 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-900/40 disabled:opacity-50"
                     >
                       {actionLoading === asset.id ? (
-                        <div className="mx-auto h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                        <div className="mx-auto h-3.5 w-3.5 animate-spin rounded-full border-2 border-amber-400/30 border-t-amber-400" />
                       ) : (
-                        "Aprovar"
+                        "Regenerar"
                       )}
-                    </button>
-                    <button
-                      onClick={() => handleReject(asset.id)}
-                      disabled={actionLoading === asset.id}
-                      className="flex-1 rounded-lg border border-red-700/50 bg-red-900/20 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-900/40 disabled:opacity-50"
-                    >
-                      Rejeitar
                     </button>
                   </div>
                 )}
 
-                {/* Error message */}
-                {asset.status === "failed" && asset.error_message && (
-                  <p className="mt-2 text-[10px] text-red-400/80">
-                    {asset.error_message}
-                  </p>
+                {/* Generating indicator */}
+                {asset.status === "generating" && (
+                  <div className="mt-3 flex items-center gap-2 text-xs text-blue-400">
+                    <div className="h-3 w-3 animate-spin rounded-full border-2 border-blue-400/30 border-t-blue-400" />
+                    Gerando...
+                  </div>
                 )}
               </div>
             </div>

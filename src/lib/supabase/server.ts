@@ -3,8 +3,9 @@
  * Usa a service_role key (bypassa RLS — seguro pra uso interno).
  */
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "./database.types";
 
-let client: ReturnType<typeof createSupabaseClient> | null = null;
+let client: ReturnType<typeof createSupabaseClient<Database>> | null = null;
 
 export function createServerClient() {
   if (client) return client;
@@ -18,7 +19,7 @@ export function createServerClient() {
     );
   }
 
-  client = createSupabaseClient(url, key, {
+  client = createSupabaseClient<Database>(url, key, {
     auth: { persistSession: false },
   });
 
