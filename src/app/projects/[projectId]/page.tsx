@@ -1,0 +1,568 @@
+"use client";
+
+import { useEffect, useState, useMemo, useCallback } from "react";
+import { useParams } from "next/navigation";
+import Link from "next/link";
+import { createClient } from "@/lib/supabase/client";
+
+interface Asset {
+  id: string;
+  asset_code: string;
+  scene: string;
+  description: string;
+  asset_type: string;
+  image_tool: string;
+  video_tool: string;
+  prompt_image: string;
+  prompt_video: string;
+  duration: number | null;
+  notes: string;
+  status: string;
+  image_url: string | null;
+  video_url: string | null;
+  error_message: string | null;
+}
+
+interface Project {
+  id: string;
+  name: string;
+  created_at: string;
+  assets: Asset[];
+}
+
+type AssetStatus =
+  | "pending"
+  | "generating"
+  | "ready"
+  | "approved"
+  | "rejected"
+  | "failed";
+
+const STATUS_CONFIG: Record<
+  AssetStatus,
+  { label: string; bg: string; text: string; ring: string; pulse?: boolean }
+> = {
+  pending: {
+    label: "Pendente",
+    bg: "bg-slate-500/15",
+    text: "text-slate-400",
+    ring: "ring-slate-500/30",
+  },
+  generating: {
+    label: "Gerando",
+    bg: "bg-blue-500/15",
+    text: "text-blue-400",
+    ring: "ring-blue-500/30",
+    pulse: true,
+  },
+  ready: {
+    label: "Pronto",
+    bg: "bg-amber-500/15",
+    text: "text-amber-400",
+    ring: "ring-amber-500/30",
+  },
+  approved: {
+    label: "Aprovado",
+    bg: "bg-emerald-500/15",
+    text: "text-emerald-400",
+    ring: "ring-emerald-500/30",
+  },
+  rejected: {
+    label: "Rejeitado",
+    bg: "bg-red-500/15",
+    text: "text-red-400",
+    ring: "ring-red-500/30",
+  },
+  failed: {
+    label: "Falhou",
+    bg: "bg-red-500/10",
+    text: "text-red-400",
+    ring: "ring-red-500/40",
+  },
+};
+
+function AssetStatusBadge({ status }: { status: string }) {
+  const config = STATUS_CONFIG[status as AssetStatus];
+  if (!config) {
+    return (
+      <span className="inline-flex items-center rounded-full bg-slate-700/50 px-2.5 py-0.5 text-[10px] font-medium text-slate-400 ring-1 ring-inset ring-slate-600/30">
+        {status}
+      </span>
+    );
+  }
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-medium ring-1 ring-inset ${config.bg} ${config.text} ${config.ring}`}
+    >
+      {config.pulse && (
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
+      )}
+      {config.label}
+    </span>
+  );
+}
+
+export default function ProjectDashboardPage() {
+  const params = useParams();
+  const projectId = params.projectId as string;
+
+  const [project, setProject] = useState<Project | null>(null);
+  const [assets, setAssets] = useState<Asset[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  // Filters
+  const [sceneFilter, setSceneFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
+
+  const fetchProject = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/projects/${projectId}`);
+      if (!res.ok) throw new Error("Erro ao carregar projeto");
+      const data = await res.json();
+      setProject(data.project ?? data);
+      setAssets(data.project?.assets ?? data.assets ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro desconhecido");
+    } finally {
+      setLoading(false);
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    fetchProject();
+  }, [fetchProject]);
+
+  // Supabase Realtime subscription for asset changes
+  useEffect(() => {
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`project-assets-${projectId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "assets",
+          filter: `project_id=eq.${projectId}`,
+        },
+        (payload) => {
+          if (payload.eventType === "UPDATE") {
+            const updated = payload.new as Asset;
+            setAssets((prev) =>
+              prev.map((a) => (a.id === updated.id ? { ...a, ...updated } : a))
+            );
+          } else if (payload.eventType === "INSERT") {
+            setAssets((prev) => [...prev, payload.new as Asset]);
+          } else if (payload.eventType === "DELETE") {
+            const deleted = payload.old as { id: string };
+            setAssets((prev) => prev.filter((a) => a.id !== deleted.id));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [projectId]);
+
+  // Derived data
+  const scenes = useMemo(
+    () => [...new Set(assets.map((a) => a.scene).filter(Boolean))].sort(),
+    [assets]
+  );
+
+  const assetTypes = useMemo(
+    () =>
+      [...new Set(assets.map((a) => a.asset_type).filter(Boolean))].sort(),
+    [assets]
+  );
+
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    assets.forEach((a) => {
+      counts[a.status] = (counts[a.status] || 0) + 1;
+    });
+    return counts;
+  }, [assets]);
+
+  const filtered = useMemo(() => {
+    return assets.filter((a) => {
+      if (sceneFilter !== "all" && a.scene !== sceneFilter) return false;
+      if (statusFilter !== "all" && a.status !== statusFilter) return false;
+      if (typeFilter !== "all" && a.asset_type !== typeFilter) return false;
+      return true;
+    });
+  }, [assets, sceneFilter, statusFilter, typeFilter]);
+
+  async function handleApprove(assetId: string) {
+    setActionLoading(assetId);
+    try {
+      await fetch(`/api/projects/${projectId}/assets/${assetId}/approve`, {
+        method: "POST",
+      });
+      setAssets((prev) =>
+        prev.map((a) => (a.id === assetId ? { ...a, status: "approved" } : a))
+      );
+    } catch {
+      /* ignore */
+    }
+    setActionLoading(null);
+  }
+
+  async function handleReject(assetId: string) {
+    setActionLoading(assetId);
+    try {
+      await fetch(`/api/projects/${projectId}/assets/${assetId}/reject`, {
+        method: "POST",
+      });
+      setAssets((prev) =>
+        prev.map((a) => (a.id === assetId ? { ...a, status: "rejected" } : a))
+      );
+    } catch {
+      /* ignore */
+    }
+    setActionLoading(null);
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="h-8 w-64 animate-pulse rounded-lg bg-slate-800" />
+        <div className="flex gap-3">
+          {[1, 2, 3, 4].map((i) => (
+            <div
+              key={i}
+              className="h-8 w-24 animate-pulse rounded-full bg-slate-800"
+            />
+          ))}
+        </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+            <div
+              key={i}
+              className="h-72 animate-pulse rounded-xl border border-slate-800 bg-slate-900"
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="rounded-lg border border-red-800 bg-red-900/20 p-6 text-center">
+          <p className="text-sm text-red-400">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-3 text-sm text-red-300 underline hover:text-red-200"
+          >
+            Tentar novamente
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const pendingCount = statusCounts["pending"] ?? 0;
+  const generatingCount = statusCounts["generating"] ?? 0;
+  const readyCount = statusCounts["ready"] ?? 0;
+  const approvedCount = statusCounts["approved"] ?? 0;
+  const rejectedCount = statusCounts["rejected"] ?? 0;
+  const failedCount = statusCounts["failed"] ?? 0;
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <Link
+            href="/projects"
+            className="mb-2 inline-flex items-center gap-1 text-sm text-slate-400 transition-colors hover:text-emerald-400"
+          >
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={2}
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"
+              />
+            </svg>
+            Projetos
+          </Link>
+          <h1 className="text-2xl font-bold text-white">
+            {project?.name ?? "Projeto"}
+          </h1>
+        </div>
+        <button
+          className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500"
+          onClick={() => {
+            fetch(`/api/projects/${projectId}/dispatch-images`, {
+              method: "POST",
+            });
+          }}
+        >
+          <svg
+            className="h-4 w-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            strokeWidth={2}
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M15.59 14.37a6 6 0 0 1-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 0 0 6.16-12.12A14.98 14.98 0 0 0 9.631 8.41m5.96 5.96a14.926 14.926 0 0 1-5.841 2.58m-.119-8.54a6 6 0 0 0-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 0 0-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 0 1-2.448-2.448 14.9 14.9 0 0 1 .06-.312m-2.24 2.39a4.493 4.493 0 0 0-1.757 4.306 4.493 4.493 0 0 0 4.306-1.758M16.5 9a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z"
+            />
+          </svg>
+          Dispatch Imagens
+        </button>
+      </div>
+
+      {/* Stats Bar */}
+      <div className="flex flex-wrap gap-2 rounded-xl border border-slate-800 bg-slate-900 px-4 py-3">
+        <span className="flex items-center gap-1.5 text-xs font-medium text-slate-400">
+          <span className="h-2 w-2 rounded-full bg-slate-500" />
+          {pendingCount} pendentes
+        </span>
+        <span className="text-slate-700">|</span>
+        <span className="flex items-center gap-1.5 text-xs font-medium text-blue-400">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-blue-400" />
+          {generatingCount} gerando
+        </span>
+        <span className="text-slate-700">|</span>
+        <span className="flex items-center gap-1.5 text-xs font-medium text-amber-400">
+          <span className="h-2 w-2 rounded-full bg-amber-400" />
+          {readyCount} prontos
+        </span>
+        <span className="text-slate-700">|</span>
+        <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-400">
+          <span className="h-2 w-2 rounded-full bg-emerald-400" />
+          {approvedCount} aprovados
+        </span>
+        {rejectedCount > 0 && (
+          <>
+            <span className="text-slate-700">|</span>
+            <span className="flex items-center gap-1.5 text-xs font-medium text-red-400">
+              <span className="h-2 w-2 rounded-full bg-red-400" />
+              {rejectedCount} rejeitados
+            </span>
+          </>
+        )}
+        {failedCount > 0 && (
+          <>
+            <span className="text-slate-700">|</span>
+            <span className="flex items-center gap-1.5 text-xs font-medium text-red-400">
+              <span className="h-2 w-2 rounded-full bg-red-500" />
+              {failedCount} falhos
+            </span>
+          </>
+        )}
+      </div>
+
+      {/* Filter Pills */}
+      <div className="flex flex-wrap items-center gap-4">
+        {/* Scene filter */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+            Cena
+          </span>
+          <button
+            onClick={() => setSceneFilter("all")}
+            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+              sceneFilter === "all"
+                ? "bg-emerald-600 text-white"
+                : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+            }`}
+          >
+            Todas
+          </button>
+          {scenes.map((scene) => (
+            <button
+              key={scene}
+              onClick={() => setSceneFilter(scene)}
+              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                sceneFilter === scene
+                  ? "bg-emerald-600 text-white"
+                  : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+              }`}
+            >
+              {scene}
+            </button>
+          ))}
+        </div>
+
+        {/* Status filter */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+            Status
+          </span>
+          <button
+            onClick={() => setStatusFilter("all")}
+            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+              statusFilter === "all"
+                ? "bg-emerald-600 text-white"
+                : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+            }`}
+          >
+            Todos
+          </button>
+          {Object.entries(STATUS_CONFIG).map(([key, cfg]) => {
+            const count = statusCounts[key] ?? 0;
+            if (count === 0) return null;
+            return (
+              <button
+                key={key}
+                onClick={() => setStatusFilter(key)}
+                className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                  statusFilter === key
+                    ? "bg-emerald-600 text-white"
+                    : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                }`}
+              >
+                {cfg.label}
+                <span className="ml-1 opacity-60">{count}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Type filter */}
+        {assetTypes.length > 1 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+              Tipo
+            </span>
+            <button
+              onClick={() => setTypeFilter("all")}
+              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                typeFilter === "all"
+                  ? "bg-emerald-600 text-white"
+                  : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+              }`}
+            >
+              Todos
+            </button>
+            {assetTypes.map((t) => (
+              <button
+                key={t}
+                onClick={() => setTypeFilter(t)}
+                className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                  typeFilter === t
+                    ? "bg-emerald-600 text-white"
+                    : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Assets Grid */}
+      {filtered.length === 0 ? (
+        <div className="rounded-xl border border-slate-800 bg-slate-900 p-12 text-center">
+          <p className="text-sm text-slate-400">
+            Nenhum asset encontrado com os filtros selecionados.
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {filtered.map((asset) => (
+            <div
+              key={asset.id}
+              className="group overflow-hidden rounded-xl border border-slate-800 bg-slate-900 transition-all hover:border-slate-700"
+            >
+              {/* Thumbnail */}
+              <div className="relative aspect-video w-full overflow-hidden bg-slate-800">
+                {asset.image_url ? (
+                  <img
+                    src={asset.image_url}
+                    alt={asset.asset_code}
+                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center">
+                    <svg
+                      className="h-8 w-8 text-slate-700"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={1.5}
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z"
+                      />
+                    </svg>
+                  </div>
+                )}
+                {/* Status overlay */}
+                <div className="absolute right-2 top-2">
+                  <AssetStatusBadge status={asset.status} />
+                </div>
+              </div>
+
+              {/* Content */}
+              <div className="p-4">
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <h3 className="truncate text-sm font-bold text-white">
+                    {asset.asset_code}
+                  </h3>
+                </div>
+                <p className="mb-2 text-[11px] font-medium text-emerald-400/80">
+                  {asset.scene}
+                </p>
+                <p className="line-clamp-2 text-xs leading-relaxed text-slate-400">
+                  {asset.description || "Sem descricao"}
+                </p>
+
+                {/* Actions for "ready" assets */}
+                {asset.status === "ready" && (
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      onClick={() => handleApprove(asset.id)}
+                      disabled={actionLoading === asset.id}
+                      className="flex-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-emerald-500 disabled:opacity-50"
+                    >
+                      {actionLoading === asset.id ? (
+                        <div className="mx-auto h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                      ) : (
+                        "Aprovar"
+                      )}
+                    </button>
+                    <button
+                      onClick={() => handleReject(asset.id)}
+                      disabled={actionLoading === asset.id}
+                      className="flex-1 rounded-lg border border-red-700/50 bg-red-900/20 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-900/40 disabled:opacity-50"
+                    >
+                      Rejeitar
+                    </button>
+                  </div>
+                )}
+
+                {/* Error message */}
+                {asset.status === "failed" && asset.error_message && (
+                  <p className="mt-2 text-[10px] text-red-400/80">
+                    {asset.error_message}
+                  </p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
