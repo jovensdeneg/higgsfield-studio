@@ -288,6 +288,32 @@ export default function ProjectDashboardPage() {
     setActionLoading(null);
   }
 
+  async function handleRetryVideo(assetId: string) {
+    setActionLoading(assetId);
+    try {
+      // 1. Reset asset to "approved" (keeps image_url intact)
+      await fetch(`/api/assets/${assetId}/approve`, { method: "POST" });
+      // 2. Dispatch video for this single asset
+      const res = await fetch("/api/dispatch/videos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assetIds: [assetId] }),
+      });
+      if (res.ok) {
+        setAssets((prev) =>
+          prev.map((a) =>
+            a.id === assetId
+              ? { ...a, status: "generating", error_message: null }
+              : a
+          )
+        );
+      }
+    } catch {
+      /* ignore */
+    }
+    setActionLoading(null);
+  }
+
   async function handleDispatchImages() {
     const pendingIds = assets
       .filter((a) => a.status === "pending" && a.prompt_image)
@@ -780,7 +806,7 @@ export default function ProjectDashboardPage() {
                 {/* Regenerate for failed/rejected assets */}
                 {(asset.status === "failed" ||
                   asset.status === "rejected") && (
-                  <div className="mt-3">
+                  <div className="mt-3 space-y-2">
                     {asset.status === "failed" && asset.error_message && (
                       <p className="mb-2 text-[10px] text-red-400/80">
                         {asset.error_message}
@@ -791,17 +817,41 @@ export default function ProjectDashboardPage() {
                         Nota: {asset.review_notes}
                       </p>
                     )}
-                    <button
-                      onClick={() => handleRegenerate(asset.id)}
-                      disabled={actionLoading === asset.id}
-                      className="w-full rounded-lg border border-amber-700/50 bg-amber-900/20 px-3 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-900/40 disabled:opacity-50"
-                    >
-                      {actionLoading === asset.id ? (
-                        <div className="mx-auto h-3.5 w-3.5 animate-spin rounded-full border-2 border-amber-400/30 border-t-amber-400" />
-                      ) : (
-                        "Regenerar"
-                      )}
-                    </button>
+                    {/* If image exists, offer to retry video; otherwise regenerate image */}
+                    {asset.image_url ? (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleRetryVideo(asset.id)}
+                          disabled={actionLoading === asset.id}
+                          className="flex-1 rounded-lg border border-blue-700/50 bg-blue-900/20 px-3 py-1.5 text-xs font-medium text-blue-400 transition-colors hover:bg-blue-900/40 disabled:opacity-50"
+                        >
+                          {actionLoading === asset.id ? (
+                            <div className="mx-auto h-3.5 w-3.5 animate-spin rounded-full border-2 border-blue-400/30 border-t-blue-400" />
+                          ) : (
+                            "Regenerar Video"
+                          )}
+                        </button>
+                        <button
+                          onClick={() => handleRegenerate(asset.id)}
+                          disabled={actionLoading === asset.id}
+                          className="rounded-lg border border-slate-700/50 bg-slate-800/50 px-3 py-1.5 text-xs font-medium text-slate-400 transition-colors hover:bg-slate-700/50 disabled:opacity-50"
+                        >
+                          Nova Imagem
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => handleRegenerate(asset.id)}
+                        disabled={actionLoading === asset.id}
+                        className="w-full rounded-lg border border-amber-700/50 bg-amber-900/20 px-3 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-900/40 disabled:opacity-50"
+                      >
+                        {actionLoading === asset.id ? (
+                          <div className="mx-auto h-3.5 w-3.5 animate-spin rounded-full border-2 border-amber-400/30 border-t-amber-400" />
+                        ) : (
+                          "Regenerar Imagem"
+                        )}
+                      </button>
+                    )}
                   </div>
                 )}
 
