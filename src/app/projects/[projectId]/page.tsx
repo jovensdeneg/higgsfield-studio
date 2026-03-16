@@ -741,6 +741,22 @@ export default function ProjectDashboardPage() {
                 <div className="absolute right-2 top-2">
                   <AssetStatusBadge status={asset.status} />
                 </div>
+                {/* Download button */}
+                {(asset.image_url || asset.video_url) && (
+                  <a
+                    href={asset.video_url ?? asset.image_url!}
+                    download
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="absolute bottom-2 right-2 flex h-8 w-8 items-center justify-center rounded-full bg-slate-900/80 text-white opacity-0 backdrop-blur-sm transition-all hover:bg-emerald-600 group-hover:opacity-100"
+                    title="Baixar"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                    </svg>
+                  </a>
+                )}
               </div>
 
               {/* Content */}
