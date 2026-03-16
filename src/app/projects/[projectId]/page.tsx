@@ -669,9 +669,16 @@ export default function ProjectDashboardPage() {
               key={asset.id}
               className="group overflow-hidden rounded-xl border border-slate-800 bg-slate-900 transition-all hover:border-slate-700"
             >
-              {/* Thumbnail */}
+              {/* Thumbnail / Video */}
               <div className="relative aspect-video w-full overflow-hidden bg-slate-800">
-                {asset.image_url ? (
+                {asset.video_url ? (
+                  <video
+                    src={asset.video_url}
+                    poster={asset.image_url ?? undefined}
+                    controls
+                    className="h-full w-full object-cover"
+                  />
+                ) : asset.image_url ? (
                   <img
                     src={asset.image_url}
                     alt={asset.asset_code}

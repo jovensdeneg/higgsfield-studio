@@ -125,11 +125,19 @@ export async function POST(request: NextRequest) {
               ? await getResultGoogle(job.external_task_id)
               : await getResult(job.external_task_id);
 
+            // Higgsfield returns { video: { url: "..." } }
+            if (
+              fullResult.video &&
+              typeof fullResult.video === "object" &&
+              (fullResult.video as Record<string, string>).url
+            ) {
+              videoUrl = (fullResult.video as Record<string, string>).url;
+            }
             // Google returns video_url directly
-            if (fullResult.video_url) {
+            else if (fullResult.video_url) {
               videoUrl = fullResult.video_url as string;
             }
-            // Higgsfield may return videos array or other formats
+            // Fallback: videos array
             else if (fullResult.videos && Array.isArray(fullResult.videos)) {
               const first = fullResult.videos[0];
               videoUrl =
