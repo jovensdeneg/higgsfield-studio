@@ -105,8 +105,14 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      // 2. Determine provider
-      const isGoogle = job.provider.startsWith("google_");
+      // 2. Determine provider — check status_url or request_payload since
+      //    tools like "runway" get routed to Google Veo but keep their original provider name
+      const statusUrl = (job as unknown as Record<string, unknown>).status_url as string | null;
+      const reqPayload = job.request_payload as Record<string, unknown> | null;
+      const isGoogle =
+        job.provider.startsWith("google_") ||
+        (statusUrl != null && statusUrl.includes("generativelanguage.googleapis.com")) ||
+        (reqPayload?.provider === "google");
 
       try {
         const statusResult = isGoogle
