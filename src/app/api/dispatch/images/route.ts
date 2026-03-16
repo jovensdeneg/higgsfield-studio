@@ -25,10 +25,14 @@ const IMAGE_TOOL_MAP: Record<
   higgsfield_flux: { provider: "higgsfield", model: "flux-pro-kontext-max" },
   higgsfield_seedream: { provider: "higgsfield", model: "seedream-v4" },
   google_nano_banana: { provider: "google", model: "nano-banana-pro" },
+  // Unmapped tools → route to Google as default
+  ideogram: { provider: "google", model: "nano-banana-pro" },
+  flux_fal: { provider: "google", model: "nano-banana-pro" },
+  midjourney: { provider: "google", model: "nano-banana-pro" },
 };
 
-// Tools that are manual / not dispatchable
-const MANUAL_TOOLS = new Set(["midjourney", "hera", "manual", "ideogram", "flux_fal"]);
+// Tools that are manual / not dispatchable (require external generation)
+const MANUAL_TOOLS = new Set(["hera", "manual"]);
 
 const DELAY_MS = 2000;
 
@@ -117,8 +121,8 @@ export async function POST(request: NextRequest) {
         });
         continue;
       } else {
-        // Default to higgsfield
-        provider = "higgsfield";
+        // Default to Google
+        provider = "google";
         model = overrideModel ?? "nano-banana-pro";
       }
 
