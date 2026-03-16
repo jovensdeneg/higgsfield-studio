@@ -2,8 +2,8 @@
  * POST /api/dispatch/videos
  *
  * Dispatches video generation for approved assets that have an image_url.
- * Video generation is async -- this route submits the jobs and stores
- * external task IDs for later polling via /api/jobs/poll.
+ * Processes sequentially with a 3s delay between requests.
+ * Stops immediately on "Not enough credits" (403) errors to avoid waste.
  *
  * Body: { assetIds: string[], provider?: "higgsfield" | "google", model?: string }
  */
@@ -29,6 +29,17 @@ const VIDEO_TOOL_MAP: Record<
   runway: { provider: "higgsfield", model: "kling-3.0" },
   kling_fal: { provider: "higgsfield", model: "kling-3.0" },
 };
+
+const DELAY_MS = 3000;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Check if an error indicates the account has no credits left */
+function isNoCreditsError(msg: string): boolean {
+  return msg.includes("Not enough credits") || msg.includes("403");
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -76,8 +87,12 @@ export async function POST(request: NextRequest) {
       externalId: string;
     }> = [];
     const errors: Array<{ assetId: string; error: string }> = [];
+    let stoppedEarly = false;
+    let stopReason = "";
 
-    for (const asset of eligible) {
+    // 2. Process sequentially with delay
+    for (let i = 0; i < eligible.length; i++) {
+      const asset = eligible[i];
       const toolKey = asset.video_tool as string | null;
       const mapping = toolKey ? VIDEO_TOOL_MAP[toolKey] : null;
 
@@ -96,7 +111,7 @@ export async function POST(request: NextRequest) {
         model = overrideModel ?? "kling-3.0";
       }
 
-      // Compute duration and prompt early (used in both job insert and submission)
+      // Compute duration and prompt
       const rawDuration = (asset.parameters as Record<string, unknown>)?.duration;
       const parsedDuration = rawDuration ? Number(rawDuration) : 5;
       // Higgsfield Kling only accepts [5, 10]; snap to nearest valid value
@@ -148,7 +163,7 @@ export async function POST(request: NextRequest) {
 
       const jobId = (jobData as { id: string }).id;
 
-      // c. Submit to provider (async -- don't poll)
+      // c. Submit to provider
       try {
         let submission: {
           request_id: string;
@@ -206,6 +221,27 @@ export async function POST(request: NextRequest) {
           .eq("id", asset.id);
 
         errors.push({ assetId: asset.id, error: errorMessage });
+
+        // Stop early on "Not enough credits" — no point continuing
+        if (isNoCreditsError(errorMessage)) {
+          stoppedEarly = true;
+          stopReason = "Sem créditos suficientes. Fila pausada para evitar desperdício.";
+
+          // Reset remaining assets back to "approved" so they can be retried later
+          const remaining = eligible.slice(i + 1);
+          if (remaining.length > 0) {
+            await supabase
+              .from("assets")
+              .update({ status: "approved" })
+              .in("id", remaining.map((a) => a.id));
+          }
+          break;
+        }
+      }
+
+      // Delay between requests (skip after last)
+      if (i < eligible.length - 1) {
+        await delay(DELAY_MS);
       }
     }
 
@@ -213,6 +249,8 @@ export async function POST(request: NextRequest) {
       dispatched: jobs.length,
       failed: errors.length,
       skipped: assets.length - eligible.length,
+      stoppedEarly,
+      stopReason: stoppedEarly ? stopReason : undefined,
       jobs,
       errors: errors.length > 0 ? errors : undefined,
     });
