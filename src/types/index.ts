@@ -163,7 +163,7 @@ export interface CsvRow {
   prompt_image: string;
   prompt_video: string;
   duration: string;
-  notes: string;
+  notes?: string;
 }
 
 // ─── API Response Helpers ───────────────────────────────────────────────────

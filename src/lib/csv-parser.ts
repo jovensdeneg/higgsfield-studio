@@ -3,7 +3,8 @@
  *
  * Expected CSV columns (header row, UTF-8):
  *   asset_code, scene, description, asset_type, image_tool, video_tool,
- *   prompt_image, prompt_video, duration, notes
+ *   prompt_image, prompt_video, duration
+ *   Optional: notes
  *
  * Returns validated AssetInsert objects ready for bulk insertion into Supabase.
  */

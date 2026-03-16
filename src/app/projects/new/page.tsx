@@ -15,7 +15,6 @@ const EXPECTED_COLUMNS = [
   "prompt_image",
   "prompt_video",
   "duration",
-  "notes",
 ];
 
 interface CsvRow {
