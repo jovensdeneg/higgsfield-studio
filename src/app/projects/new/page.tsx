@@ -38,6 +38,7 @@ export default function NewProjectPage() {
 
   const [name, setName] = useState("");
   const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [csvRawText, setCsvRawText] = useState<string>("");
   const [parsedRows, setParsedRows] = useState<CsvRow[]>([]);
   const [parseErrors, setParseErrors] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -46,8 +47,16 @@ export default function NewProjectPage() {
 
   const validateAndParse = useCallback((file: File) => {
     setCsvFile(file);
+    setCsvRawText("");
     setParseErrors([]);
     setParsedRows([]);
+
+    // Read raw text to send to backend
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setCsvRawText((ev.target?.result as string) ?? "");
+    };
+    reader.readAsText(file);
 
     Papa.parse<CsvRow>(file, {
       header: true,
@@ -129,7 +138,7 @@ export default function NewProjectPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: name.trim(),
-          assets: parsedRows,
+          csv: csvRawText,
         }),
       });
 
@@ -263,6 +272,7 @@ export default function NewProjectPage() {
                   onClick={(e) => {
                     e.stopPropagation();
                     setCsvFile(null);
+                    setCsvRawText("");
                     setParsedRows([]);
                     setParseErrors([]);
                     if (fileInputRef.current) fileInputRef.current.value = "";
