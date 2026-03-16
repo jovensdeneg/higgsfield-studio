@@ -118,6 +118,7 @@ export default function ProjectDashboardPage() {
   const [dispatchResult, setDispatchResult] = useState<string | null>(null);
   const [rejectNotes, setRejectNotes] = useState<Record<string, string>>({});
   const [showRejectInput, setShowRejectInput] = useState<string | null>(null);
+  const [imageProvider, setImageProvider] = useState<string>("higgsfield");
 
   // Filters
   const [sceneFilter, setSceneFilter] = useState<string>("all");
@@ -328,7 +329,7 @@ export default function ProjectDashboardPage() {
       const res = await fetch("/api/dispatch/images", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ assetIds: pendingIds }),
+        body: JSON.stringify({ assetIds: pendingIds, provider: imageProvider }),
       });
       const data = await res.json();
       setDispatchResult(
@@ -476,6 +477,15 @@ export default function ProjectDashboardPage() {
           </h1>
         </div>
         <div className="flex items-center gap-2">
+          <select
+            value={imageProvider}
+            onChange={(e) => setImageProvider(e.target.value)}
+            className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-white outline-none transition-colors hover:border-slate-600 focus:border-emerald-500"
+            disabled={dispatching !== null}
+          >
+            <option value="higgsfield">Higgsfield</option>
+            <option value="google">Google AI</option>
+          </select>
           <button
             className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500 disabled:opacity-50"
             onClick={handleDispatchImages}
