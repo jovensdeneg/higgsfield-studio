@@ -25,9 +25,9 @@ const VIDEO_TOOL_MAP: Record<
   higgsfield_kling: { provider: "higgsfield", model: "kling-3.0" },
   higgsfield_dop: { provider: "higgsfield", model: "dop-turbo" },
   google_veo: { provider: "google", model: "veo-3.1" },
-  // Unmapped tools → route to Google Veo as default
-  runway: { provider: "google", model: "veo-3.1" },
-  kling_fal: { provider: "google", model: "veo-3.1" },
+  // Unmapped tools → route to Higgsfield Kling as default
+  runway: { provider: "higgsfield", model: "kling-3.0" },
+  kling_fal: { provider: "higgsfield", model: "kling-3.0" },
 };
 
 export async function POST(request: NextRequest) {
@@ -86,14 +86,14 @@ export async function POST(request: NextRequest) {
 
       if (overrideProvider) {
         provider = overrideProvider;
-        model = overrideModel ?? mapping?.model ?? "veo-3.1";
+        model = overrideModel ?? mapping?.model ?? "kling-3.0";
       } else if (mapping) {
         provider = mapping.provider;
         model = overrideModel ?? mapping.model;
       } else {
-        // Default to Google Veo
-        provider = "google";
-        model = overrideModel ?? "veo-3.1";
+        // Default to Higgsfield Kling
+        provider = "higgsfield";
+        model = overrideModel ?? "kling-3.0";
       }
 
       // Compute duration and prompt early (used in both job insert and submission)
