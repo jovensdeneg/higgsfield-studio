@@ -256,14 +256,28 @@ export default function ProjectDashboardPage() {
   async function handleRegenerate(assetId: string) {
     setActionLoading(assetId);
     try {
+      // Find the asset to get its review_notes and original prompt
+      const asset = assets.find((a) => a.id === assetId);
+      const feedback = asset?.review_notes?.trim();
+
+      // Build updated prompt: append feedback to original prompt
+      let updatedPrompt: string | undefined;
+      if (feedback && asset?.prompt_image) {
+        updatedPrompt = `${asset.prompt_image}\n\n[FEEDBACK: ${feedback}]`;
+      }
+
       const res = await fetch(`/api/assets/${assetId}/regenerate`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...(updatedPrompt ? { prompt_image: updatedPrompt } : {}),
+        }),
       });
       if (res.ok) {
         setAssets((prev) =>
           prev.map((a) =>
             a.id === assetId
-              ? { ...a, status: "pending", image_url: null, video_url: null, error_message: null }
+              ? { ...a, status: "pending", image_url: null, video_url: null, error_message: null, review_notes: null }
               : a
           )
         );
