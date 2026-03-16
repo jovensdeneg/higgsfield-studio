@@ -93,6 +93,12 @@ export async function POST(request: NextRequest) {
         model = overrideModel ?? "kling-3.0";
       }
 
+      // Compute duration and prompt early (used in both job insert and submission)
+      const rawDuration = (asset.parameters as Record<string, unknown>)?.duration;
+      const duration = rawDuration ? Number(rawDuration) : 5;
+      const prompt = asset.prompt_video ?? asset.description;
+      const preset = (asset.parameters as Record<string, unknown>)?.preset as string | undefined;
+
       // a. Update status to "generating"
       await supabase
         .from("assets")
@@ -106,11 +112,11 @@ export async function POST(request: NextRequest) {
         job_type: "video",
         status: "running",
         request_payload: {
-          prompt: asset.prompt_video ?? asset.description,
+          prompt,
           start_image_url: asset.image_url,
           model,
           provider,
-          duration: (asset.parameters as Record<string, unknown>)?.duration ?? 5,
+          duration,
         },
       };
 
@@ -136,13 +142,6 @@ export async function POST(request: NextRequest) {
 
       // c. Submit to provider (async -- don't poll)
       try {
-        const prompt = asset.prompt_video ?? asset.description;
-        const duration =
-          ((asset.parameters as Record<string, unknown>)?.duration as number) ??
-          5;
-        const preset = (asset.parameters as Record<string, unknown>)
-          ?.preset as string | undefined;
-
         let submission: {
           request_id: string;
           status_url: string;
