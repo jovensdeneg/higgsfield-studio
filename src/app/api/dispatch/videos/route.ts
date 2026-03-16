@@ -95,7 +95,12 @@ export async function POST(request: NextRequest) {
 
       // Compute duration and prompt early (used in both job insert and submission)
       const rawDuration = (asset.parameters as Record<string, unknown>)?.duration;
-      const duration = rawDuration ? Number(rawDuration) : 5;
+      const parsedDuration = rawDuration ? Number(rawDuration) : 5;
+      // Higgsfield Kling only accepts [5, 10]; snap to nearest valid value
+      const VALID_DURATIONS = [5, 10];
+      const duration = VALID_DURATIONS.reduce((prev, curr) =>
+        Math.abs(curr - parsedDuration) < Math.abs(prev - parsedDuration) ? curr : prev
+      );
       const prompt = asset.prompt_video ?? asset.description;
       const preset = (asset.parameters as Record<string, unknown>)?.preset as string | undefined;
 
