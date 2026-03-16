@@ -115,8 +115,12 @@ export async function GET(request: NextRequest) {
       // Redis may not be available — skip legacy scenes
     }
 
-    // Sort by created_at descending
-    items.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    // Sort alphabetically by asset_code (fallback to source_name, then id)
+    items.sort((a, b) => {
+      const nameA = (a.asset_code ?? a.source_name ?? a.id).toLowerCase();
+      const nameB = (b.asset_code ?? b.source_name ?? b.id).toLowerCase();
+      return nameA.localeCompare(nameB, "pt-BR", { numeric: true });
+    });
 
     return NextResponse.json({ items, total: items.length });
   } catch (err) {
