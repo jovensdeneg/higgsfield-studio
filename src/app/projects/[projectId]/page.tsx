@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -119,6 +119,8 @@ export default function ProjectDashboardPage() {
   const [rejectNotes, setRejectNotes] = useState<Record<string, string>>({});
   const [showRejectInput, setShowRejectInput] = useState<string | null>(null);
   const [imageProvider, setImageProvider] = useState<string>("higgsfield");
+  const dispatchQueueRef = useRef<string[]>([]);
+  const isDispatchingRef = useRef(false);
 
   // Filters
   const [sceneFilter, setSceneFilter] = useState<string>("all");
@@ -316,6 +318,9 @@ export default function ProjectDashboardPage() {
   }
 
   async function handleDispatchImages() {
+    // Prevent double-clicks
+    if (isDispatchingRef.current) return;
+
     const pendingIds = assets
       .filter((a) => a.status === "pending" && a.prompt_image)
       .map((a) => a.id);
@@ -323,24 +328,32 @@ export default function ProjectDashboardPage() {
       setDispatchResult("Nenhum asset pendente com prompt de imagem.");
       return;
     }
+
+    // Store queue in ref so re-renders can't interrupt it
+    dispatchQueueRef.current = [...pendingIds];
+    isDispatchingRef.current = true;
     setDispatching("images");
     setDispatchResult(null);
 
+    const total = pendingIds.length;
+    const provider = imageProvider; // capture at start
     let completed = 0;
     let failed = 0;
     let skipped = 0;
 
     // Process one at a time to avoid Vercel timeout
-    for (let i = 0; i < pendingIds.length; i++) {
-      const assetId = pendingIds[i];
+    for (let i = 0; i < total; i++) {
+      const assetId = dispatchQueueRef.current[i];
+      if (!assetId) break;
+
       setDispatchResult(
-        `Gerando imagem ${i + 1}/${pendingIds.length}... (${completed} ok, ${failed} falhas)`
+        `Gerando imagem ${i + 1}/${total}... (${completed} ok, ${failed} falhas)`
       );
       try {
         const res = await fetch("/api/dispatch/images", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ assetId, provider: imageProvider }),
+          body: JSON.stringify({ assetId, provider }),
         });
         const data = await res.json();
         if (data.status === "completed") completed++;
@@ -355,6 +368,8 @@ export default function ProjectDashboardPage() {
       `Imagens: ${completed} geradas, ${failed} falhas, ${skipped} ignoradas`
     );
     setDispatching(null);
+    isDispatchingRef.current = false;
+    dispatchQueueRef.current = [];
   }
 
   async function handleDispatchVideos() {
