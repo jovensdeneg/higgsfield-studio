@@ -1,10 +1,13 @@
 /**
  * POST /api/dispatch/images
  *
- * Dispatches image generation for a batch of assets.
- * Processes sequentially with a 2s delay between requests to respect rate limits.
+ * Dispatches image generation for ONE asset at a time.
+ * The frontend should call this endpoint repeatedly for each asset in sequence.
+ * This avoids Vercel's 60s function timeout on the Hobby plan.
  *
- * Body: { assetIds: string[], provider?: "higgsfield" | "google", model?: string }
+ * Body: { assetId: string, provider?: "higgsfield" | "google", model?: string }
+ *
+ * Legacy support: also accepts { assetIds: string[] } — will process only the FIRST one.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
@@ -34,237 +37,217 @@ const IMAGE_TOOL_MAP: Record<
 // Tools that are manual / not dispatchable (require external generation)
 const MANUAL_TOOLS = new Set(["hera", "manual"]);
 
-const DELAY_MS = 2000;
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const {
+      assetId: singleId,
       assetIds,
       provider: overrideProvider,
       model: overrideModel,
     } = body as {
+      assetId?: string;
       assetIds?: string[];
       provider?: "higgsfield" | "google";
       model?: string;
     };
 
-    if (!assetIds || !Array.isArray(assetIds) || assetIds.length === 0) {
+    // Accept assetId (preferred) or first element of assetIds (legacy)
+    const targetId = singleId ?? assetIds?.[0];
+
+    if (!targetId) {
       return NextResponse.json(
-        { error: "'assetIds' must be a non-empty array of UUIDs" },
+        { error: "'assetId' is required" },
         { status: 400 },
       );
     }
 
+    // If caller sent multiple IDs, return the remaining so the frontend knows what's left
+    const remaining = assetIds ? assetIds.filter((id) => id !== targetId) : [];
+
     const supabase = createServerClient();
 
-    // 1. Fetch assets
-    const { data: assetsData, error: fetchError } = await supabase
+    // 1. Fetch the single asset
+    const { data: assetData, error: fetchError } = await supabase
       .from("assets")
       .select("*")
-      .in("id", assetIds);
+      .eq("id", targetId)
+      .single();
 
-    if (fetchError) {
+    if (fetchError || !assetData) {
       return NextResponse.json(
-        { error: `Failed to fetch assets: ${fetchError.message}` },
+        { error: `Asset not found: ${fetchError?.message ?? targetId}` },
+        { status: 404 },
+      );
+    }
+
+    const asset = assetData as unknown as AssetRow;
+
+    // 2. Validate status
+    if (asset.status !== "pending") {
+      return NextResponse.json({
+        status: "skipped",
+        assetId: asset.id,
+        reason: `Status is '${asset.status}', expected 'pending'`,
+        remaining,
+      });
+    }
+
+    if (!asset.prompt_image) {
+      return NextResponse.json({
+        status: "skipped",
+        assetId: asset.id,
+        reason: "No prompt_image",
+        remaining,
+      });
+    }
+
+    // 3. Determine provider and model
+    const toolKey = asset.image_tool as string | null;
+    const mapping = toolKey ? IMAGE_TOOL_MAP[toolKey] : null;
+
+    let provider: "higgsfield" | "google";
+    let model: string;
+
+    if (overrideProvider) {
+      provider = overrideProvider;
+      model = overrideModel ?? mapping?.model ?? "nano-banana-pro";
+    } else if (mapping) {
+      provider = mapping.provider;
+      model = overrideModel ?? mapping.model;
+    } else if (toolKey && MANUAL_TOOLS.has(toolKey)) {
+      return NextResponse.json({
+        status: "skipped",
+        assetId: asset.id,
+        reason: `Manual tool: ${toolKey}`,
+        remaining,
+      });
+    } else {
+      provider = "higgsfield";
+      model = overrideModel ?? "nano-banana-pro";
+    }
+
+    // 4. Get character reference images if applicable
+    let referenceImages: string[] | undefined;
+    if (asset.character_id) {
+      const { data: charData } = await supabase
+        .from("characters")
+        .select("photo_urls")
+        .eq("id", asset.character_id)
+        .single();
+
+      if (charData && Array.isArray(charData.photo_urls) && charData.photo_urls.length > 0) {
+        referenceImages = charData.photo_urls as string[];
+      }
+    }
+
+    // 5. Update status to "generating"
+    await supabase
+      .from("assets")
+      .update({ status: "generating" })
+      .eq("id", asset.id);
+
+    // 6. Create generation_job record
+    const jobInsert: GenerationJobInsert = {
+      asset_id: asset.id,
+      provider: (toolKey ?? `${provider}_nano_banana`) as GenerationTool,
+      job_type: "image",
+      status: "running",
+      request_payload: {
+        prompt: asset.prompt_image,
+        model,
+        provider,
+        reference_images: referenceImages ?? [],
+      },
+    };
+
+    const { data: jobData, error: jobError } = await supabase
+      .from("generation_jobs")
+      .insert(jobInsert)
+      .select()
+      .single();
+
+    if (jobError) {
+      await supabase
+        .from("assets")
+        .update({ status: "failed" })
+        .eq("id", asset.id);
+      return NextResponse.json(
+        { error: `Failed to create job: ${jobError.message}`, remaining },
         { status: 500 },
       );
     }
 
-    const assets = (assetsData ?? []) as unknown as AssetRow[];
+    const jobId = (jobData as { id: string }).id;
 
-    // 2. Filter to only pending assets with a prompt
-    const eligible = assets.filter(
-      (a) => a.status === "pending" && a.prompt_image,
-    );
-    const skipped = assets.length - eligible.length;
+    // 7. Call the provider (single asset — fits within Vercel 60s timeout)
+    try {
+      let imageUrl: string;
 
-    // 3. Process each asset sequentially
-    const results: Array<{
-      assetId: string;
-      status: "completed" | "failed" | "skipped";
-      url?: string;
-      error?: string;
-    }> = [];
-
-    let dispatched = 0;
-    let failed = 0;
-
-    for (let i = 0; i < eligible.length; i++) {
-      const asset = eligible[i];
-
-      // Determine provider and model
-      const toolKey = asset.image_tool as string | null;
-      const mapping = toolKey ? IMAGE_TOOL_MAP[toolKey] : null;
-
-      let provider: "higgsfield" | "google";
-      let model: string;
-
-      if (overrideProvider) {
-        provider = overrideProvider;
-        model =
-          overrideModel ??
-          mapping?.model ??
-          "nano-banana-pro";
-      } else if (mapping) {
-        provider = mapping.provider;
-        model = overrideModel ?? mapping.model;
-      } else if (toolKey && MANUAL_TOOLS.has(toolKey)) {
-        results.push({
-          assetId: asset.id,
-          status: "skipped",
-          error: `Manual tool: ${toolKey}`,
-        });
-        continue;
+      if (provider === "google") {
+        const result = await generateImageGoogle(
+          asset.prompt_image!,
+          model,
+          referenceImages,
+        );
+        imageUrl = result.url;
       } else {
-        // Default to Higgsfield
-        provider = "higgsfield";
-        model = overrideModel ?? "nano-banana-pro";
+        const result = await generateImage(
+          asset.prompt_image!,
+          model,
+          referenceImages,
+        );
+        imageUrl = result.url;
       }
 
-      // Get character reference images if applicable
-      let referenceImages: string[] | undefined;
-      if (asset.character_id) {
-        const { data: charData } = await supabase
-          .from("characters")
-          .select("photo_urls")
-          .eq("id", asset.character_id)
-          .single();
-
-        if (charData && Array.isArray(charData.photo_urls) && charData.photo_urls.length > 0) {
-          referenceImages = charData.photo_urls as string[];
-        }
-      }
-
-      // a. Update status to "generating"
+      // Success: update asset and job
       await supabase
         .from("assets")
-        .update({ status: "generating" })
+        .update({ image_url: imageUrl, status: "ready" })
         .eq("id", asset.id);
 
-      // b. Create generation_job record
-      const jobInsert: GenerationJobInsert = {
-        asset_id: asset.id,
-        provider: (toolKey ?? `${provider}_nano_banana`) as GenerationTool,
-        job_type: "image",
-        status: "running",
-        request_payload: {
-          prompt: asset.prompt_image,
-          model,
-          provider,
-          reference_images: referenceImages ?? [],
-        },
-      };
-
-      const { data: jobData, error: jobError } = await supabase
+      await supabase
         .from("generation_jobs")
-        .insert(jobInsert)
-        .select()
-        .single();
-
-      if (jobError) {
-        results.push({
-          assetId: asset.id,
-          status: "failed",
-          error: `Failed to create job: ${jobError.message}`,
-        });
-        await supabase
-          .from("assets")
-          .update({ status: "failed" })
-          .eq("id", asset.id);
-        failed++;
-        continue;
-      }
-
-      const jobId = (jobData as { id: string }).id;
-
-      // c. Call the provider
-      try {
-        let imageUrl: string;
-
-        if (provider === "google") {
-          const result = await generateImageGoogle(
-            asset.prompt_image!,
-            model,
-            referenceImages,
-          );
-          imageUrl = result.url;
-        } else {
-          const result = await generateImage(
-            asset.prompt_image!,
-            model,
-            referenceImages,
-          );
-          imageUrl = result.url;
-        }
-
-        // d. Success: update asset and job
-        await supabase
-          .from("assets")
-          .update({ image_url: imageUrl, status: "ready" })
-          .eq("id", asset.id);
-
-        await supabase
-          .from("generation_jobs")
-          .update({
-            status: "completed",
-            result_url: imageUrl,
-            completed_at: new Date().toISOString(),
-          })
-          .eq("id", jobId);
-
-        results.push({
-          assetId: asset.id,
+        .update({
           status: "completed",
-          url: imageUrl,
-        });
-        dispatched++;
-      } catch (err) {
-        // e. Failure: update asset and job
-        const errorMessage =
-          err instanceof Error ? err.message : String(err);
+          result_url: imageUrl,
+          completed_at: new Date().toISOString(),
+        })
+        .eq("id", jobId);
 
-        await supabase
-          .from("assets")
-          .update({ status: "failed" })
-          .eq("id", asset.id);
+      return NextResponse.json({
+        status: "completed",
+        assetId: asset.id,
+        url: imageUrl,
+        remaining,
+      });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
 
-        await supabase
-          .from("generation_jobs")
-          .update({
-            status: "failed",
-            error_message: errorMessage.slice(0, 2000),
-            completed_at: new Date().toISOString(),
-          })
-          .eq("id", jobId);
+      await supabase
+        .from("assets")
+        .update({ status: "failed" })
+        .eq("id", asset.id);
 
-        results.push({
-          assetId: asset.id,
+      await supabase
+        .from("generation_jobs")
+        .update({
           status: "failed",
-          error: errorMessage,
-        });
-        failed++;
-      }
+          error_message: errorMessage.slice(0, 2000),
+          completed_at: new Date().toISOString(),
+        })
+        .eq("id", jobId);
 
-      // Delay between requests (skip after last)
-      if (i < eligible.length - 1) {
-        await delay(DELAY_MS);
-      }
+      return NextResponse.json({
+        status: "failed",
+        assetId: asset.id,
+        error: errorMessage,
+        remaining,
+      });
     }
-
-    return NextResponse.json({
-      dispatched,
-      skipped: skipped + results.filter((r) => r.status === "skipped").length,
-      failed,
-      results,
-    });
   } catch (err) {
     const message =
-      err instanceof Error ? err.message : "Failed to dispatch images";
+      err instanceof Error ? err.message : "Failed to dispatch image";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

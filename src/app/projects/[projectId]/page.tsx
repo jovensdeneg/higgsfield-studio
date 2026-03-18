@@ -325,21 +325,35 @@ export default function ProjectDashboardPage() {
     }
     setDispatching("images");
     setDispatchResult(null);
-    try {
-      const res = await fetch("/api/dispatch/images", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ assetIds: pendingIds, provider: imageProvider }),
-      });
-      const data = await res.json();
+
+    let completed = 0;
+    let failed = 0;
+    let skipped = 0;
+
+    // Process one at a time to avoid Vercel timeout
+    for (let i = 0; i < pendingIds.length; i++) {
+      const assetId = pendingIds[i];
       setDispatchResult(
-        `Imagens: ${data.dispatched ?? 0} geradas, ${data.failed ?? 0} falhas, ${data.skipped ?? 0} ignoradas`
+        `Gerando imagem ${i + 1}/${pendingIds.length}... (${completed} ok, ${failed} falhas)`
       );
-    } catch (err) {
-      setDispatchResult(
-        `Erro: ${err instanceof Error ? err.message : "falha no dispatch"}`
-      );
+      try {
+        const res = await fetch("/api/dispatch/images", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ assetId, provider: imageProvider }),
+        });
+        const data = await res.json();
+        if (data.status === "completed") completed++;
+        else if (data.status === "failed") failed++;
+        else if (data.status === "skipped") skipped++;
+      } catch {
+        failed++;
+      }
     }
+
+    setDispatchResult(
+      `Imagens: ${completed} geradas, ${failed} falhas, ${skipped} ignoradas`
+    );
     setDispatching(null);
   }
 
@@ -373,6 +387,10 @@ export default function ProjectDashboardPage() {
 
   async function handlePollJobs() {
     try {
+      // 1. Clean up stale "generating" assets (stuck > 5min)
+      await fetch("/api/cleanup/stale", { method: "POST" }).catch(() => {});
+
+      // 2. Poll running video jobs
       const res = await fetch("/api/jobs/poll", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
