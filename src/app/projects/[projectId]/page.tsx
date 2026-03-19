@@ -387,6 +387,8 @@ export default function ProjectDashboardPage() {
   }
 
   async function handleDispatchVideos() {
+    if (isDispatchingRef.current) return;
+
     const approvedIds = assets
       .filter((a) => a.status === "approved" && a.image_url)
       .map((a) => a.id);
@@ -394,24 +396,54 @@ export default function ProjectDashboardPage() {
       setDispatchResult("Nenhum asset aprovado com imagem pronta.");
       return;
     }
+
+    dispatchQueueRef.current = [...approvedIds];
+    isDispatchingRef.current = true;
     setDispatching("videos");
     setDispatchResult(null);
-    try {
-      const res = await fetch("/api/dispatch/videos", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ assetIds: approvedIds, provider: videoProvider }),
-      });
-      const data = await res.json();
+
+    const total = approvedIds.length;
+    const provider = videoProvider;
+    let submitted = 0;
+    let failed = 0;
+    let skipped = 0;
+
+    for (let i = 0; i < total; i++) {
+      const assetId = dispatchQueueRef.current[i];
+      if (!assetId) break;
+
       setDispatchResult(
-        `Vídeos: ${data.dispatched ?? 0} enviados, ${data.failed ?? 0} falhas, ${data.skipped ?? 0} ignorados`
+        `Enviando video ${i + 1}/${total}... (${submitted} ok, ${failed} falhas)`
       );
-    } catch (err) {
-      setDispatchResult(
-        `Erro: ${err instanceof Error ? err.message : "falha no dispatch"}`
-      );
+      try {
+        const res = await fetch("/api/dispatch/videos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ assetId, provider }),
+        });
+        const data = await res.json();
+        if (data.status === "submitted") submitted++;
+        else if (data.status === "failed") {
+          failed++;
+          // Stop on no credits
+          if (data.noCredits) {
+            setDispatchResult(
+              `Sem creditos! ${submitted} enviados, ${failed} falhas, ${total - i - 1} restantes`
+            );
+            break;
+          }
+        } else if (data.status === "skipped") skipped++;
+      } catch {
+        failed++;
+      }
     }
+
+    setDispatchResult(
+      `Videos: ${submitted} enviados, ${failed} falhas, ${skipped} ignorados`
+    );
     setDispatching(null);
+    isDispatchingRef.current = false;
+    dispatchQueueRef.current = [];
   }
 
   async function handlePollJobs() {
