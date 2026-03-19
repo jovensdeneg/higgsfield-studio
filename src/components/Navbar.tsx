@@ -4,13 +4,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const NAV_LINKS = [
-  { href: "/", label: "Dashboard" },
   { href: "/projects", label: "Projetos" },
-  { href: "/generate", label: "Nova Cena" },
-  { href: "/scenes", label: "Cenas" },
-  { href: "/characters", label: "Personagens" },
+  { href: "/generate-image", label: "Imagem Direta" },
   { href: "/videos/submit", label: "Video Direto" },
-  { href: "/batch", label: "Batch" },
   { href: "/videos", label: "Galeria" },
 ] as const;
 
@@ -31,10 +27,7 @@ export default function Navbar() {
         {/* Navigation Links */}
         <div className="flex items-center gap-1">
           {NAV_LINKS.map(({ href, label }) => {
-            const isActive =
-              href === "/"
-                ? pathname === "/"
-                : pathname.startsWith(href);
+            const isActive = pathname.startsWith(href);
 
             return (
               <Link

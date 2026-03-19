@@ -19,6 +19,11 @@ const GOOGLE_VIDEO_MODELS = [
   { value: "veo-3.1-fast", label: "Veo 3.1 Fast" },
 ];
 
+const RUNWAY_VIDEO_MODELS = [
+  { value: "gen4.5", label: "Gen 4.5 Turbo" },
+];
+const RUNWAY_DURATIONS = [5, 10];
+
 const HIGGSFIELD_DURATIONS = [5, 10, 15];
 // Image-to-video com Veo 3.1 so suporta 8s
 const GOOGLE_DURATIONS = [8];
@@ -32,7 +37,7 @@ const CAMERA_PRESETS = [
 ];
 
 export default function VideoSubmitPage() {
-  const [provider, setProvider] = useState<"higgsfield" | "google">("google");
+  const [provider, setProvider] = useState<"higgsfield" | "google" | "runway">("google");
   const [startImageUrl, setStartImageUrl] = useState("");
   const [endImageUrl, setEndImageUrl] = useState("");
   const [startPreview, setStartPreview] = useState<string | null>(null);
@@ -53,15 +58,20 @@ export default function VideoSubmitPage() {
 
   // Provider-aware options
   const isGoogle = provider === "google";
-  const videoModels = isGoogle ? GOOGLE_VIDEO_MODELS : HIGGSFIELD_VIDEO_MODELS;
-  const videoDurations = isGoogle ? GOOGLE_DURATIONS : HIGGSFIELD_DURATIONS;
+  const isRunway = provider === "runway";
+  const videoModels = isRunway ? RUNWAY_VIDEO_MODELS : isGoogle ? GOOGLE_VIDEO_MODELS : HIGGSFIELD_VIDEO_MODELS;
+  const videoDurations = isRunway ? RUNWAY_DURATIONS : isGoogle ? GOOGLE_DURATIONS : HIGGSFIELD_DURATIONS;
 
-  function handleProviderChange(newProvider: "higgsfield" | "google") {
+  function handleProviderChange(newProvider: "higgsfield" | "google" | "runway") {
     setProvider(newProvider);
     // Reset model and duration to first option of the new provider
     if (newProvider === "google") {
       setModel("veo-3.1");
       setDuration(8);
+      setPreset("");
+    } else if (newProvider === "runway") {
+      setModel("gen4.5");
+      setDuration(5);
       setPreset("");
     } else {
       setModel("kling-3.0");
@@ -224,6 +234,17 @@ export default function VideoSubmitPage() {
             >
               Higgsfield
             </button>
+            <button
+              type="button"
+              onClick={() => handleProviderChange("runway")}
+              className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+                provider === "runway"
+                  ? "bg-purple-600 text-white"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              Runway
+            </button>
           </div>
         </div>
 
@@ -376,7 +397,7 @@ export default function VideoSubmitPage() {
         </div>
 
         {/* Video Config */}
-        <div className={`grid gap-4 ${isGoogle ? "grid-cols-2" : "grid-cols-3"}`}>
+        <div className={`grid gap-4 ${isGoogle || isRunway ? "grid-cols-2" : "grid-cols-3"}`}>
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-400">Modelo</label>
             <select value={model} onChange={(e) => setModel(e.target.value)}
@@ -391,7 +412,7 @@ export default function VideoSubmitPage() {
               {videoDurations.map((d) => <option key={d} value={d}>{d} segundos</option>)}
             </select>
           </div>
-          {!isGoogle && (
+          {!isGoogle && !isRunway && (
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-400">Preset Camera</label>
             <select value={preset} onChange={(e) => setPreset(e.target.value)}

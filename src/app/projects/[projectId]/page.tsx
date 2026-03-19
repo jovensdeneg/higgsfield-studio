@@ -262,7 +262,7 @@ export default function ProjectDashboardPage() {
     try {
       // Find the asset to get its review_notes and original prompt
       const asset = assets.find((a) => a.id === assetId);
-      const feedback = asset?.review_notes?.trim();
+      const feedback = rejectNotes[assetId]?.trim() || asset?.review_notes?.trim();
 
       // Build updated prompt: append feedback to original prompt
       let updatedPrompt: string | undefined;
@@ -285,6 +285,12 @@ export default function ProjectDashboardPage() {
               : a
           )
         );
+        setShowRejectInput(null);
+        setRejectNotes((prev) => {
+          const next = { ...prev };
+          delete next[assetId];
+          return next;
+        });
       }
     } catch {
       /* ignore */
@@ -976,6 +982,52 @@ export default function ProjectDashboardPage() {
                   <div className="mt-3 flex items-center gap-2 text-xs text-blue-400">
                     <div className="h-3 w-3 animate-spin rounded-full border-2 border-blue-400/30 border-t-blue-400" />
                     Gerando...
+                  </div>
+                )}
+
+                {/* Undo option for approved assets */}
+                {asset.status === "approved" && (
+                  <div className="mt-3 space-y-2">
+                    {showRejectInput === asset.id ? (
+                      <div className="flex gap-1.5">
+                        <input
+                          type="text"
+                          placeholder="Descreva o ajuste desejado..."
+                          value={rejectNotes[asset.id] ?? ""}
+                          onChange={(e) =>
+                            setRejectNotes((prev) => ({
+                              ...prev,
+                              [asset.id]: e.target.value,
+                            }))
+                          }
+                          className="flex-1 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:border-purple-600 focus:outline-none"
+                        />
+                        <button
+                          onClick={() => handleRegenerate(asset.id)}
+                          disabled={
+                            actionLoading === asset.id ||
+                            (rejectNotes[asset.id]?.trim().length ?? 0) < 5
+                          }
+                          className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-500 disabled:opacity-50"
+                        >
+                          Enviar
+                        </button>
+                        <button
+                          onClick={() => setShowRejectInput(null)}
+                          className="rounded-lg border border-slate-700 px-2 py-1.5 text-xs text-slate-400 hover:bg-slate-800"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setShowRejectInput(asset.id)}
+                        disabled={actionLoading === asset.id}
+                        className="w-full rounded-lg border border-amber-700/50 bg-amber-900/20 px-3 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-900/40 disabled:opacity-50"
+                      >
+                        Ajustar Imagem
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
