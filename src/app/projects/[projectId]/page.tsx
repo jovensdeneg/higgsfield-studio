@@ -295,13 +295,26 @@ export default function ProjectDashboardPage() {
   async function handleRetryVideo(assetId: string) {
     setActionLoading(assetId);
     try {
+      const asset = assets.find((a) => a.id === assetId);
+      const feedback = asset?.review_notes?.trim();
+
+      // If there's feedback, append it to prompt_video before retrying
+      if (feedback && asset?.prompt_video) {
+        const updatedPrompt = `${asset.prompt_video}\n\n[FEEDBACK: ${feedback}]`;
+        await fetch(`/api/projects/${projectId}/assets`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids: [assetId], updates: { prompt_video: updatedPrompt } }),
+        });
+      }
+
       // 1. Reset asset to "approved" (keeps image_url intact)
       await fetch(`/api/assets/${assetId}/approve`, { method: "POST" });
       // 2. Dispatch video for this single asset
       const res = await fetch("/api/dispatch/videos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ assetIds: [assetId] }),
+        body: JSON.stringify({ assetIds: [assetId], provider: videoProvider }),
       });
       if (res.ok) {
         setAssets((prev) =>
