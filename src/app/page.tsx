@@ -109,7 +109,7 @@ export default function DashboardPage() {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-700 border-t-emerald-500" />
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-700 border-t-purple-500" />
           <p className="text-sm text-slate-400">Carregando dashboard...</p>
         </div>
       </div>
@@ -145,7 +145,7 @@ export default function DashboardPage() {
         <div className="flex items-center gap-3">
           <Link
             href="/generate"
-            className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500"
+            className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-purple-500"
           >
             <svg
               className="h-4 w-4"
@@ -241,9 +241,9 @@ export default function DashboardPage() {
 
         <div className="rounded-xl border border-slate-800 bg-slate-900 p-5">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/15">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-500/15">
               <svg
-                className="h-5 w-5 text-emerald-400"
+                className="h-5 w-5 text-purple-400"
                 fill="none"
                 viewBox="0 0 24 24"
                 strokeWidth={1.5}
@@ -319,7 +319,7 @@ export default function DashboardPage() {
           {scenes.length > 0 && (
             <Link
               href="/scenes"
-              className="text-sm text-emerald-400 hover:text-emerald-300"
+              className="text-sm text-purple-400 hover:text-purple-300"
             >
               Ver todas
             </Link>

@@ -167,7 +167,7 @@ export default function NewProjectPage() {
       <div>
         <Link
           href="/projects"
-          className="mb-3 inline-flex items-center gap-1 text-sm text-slate-400 transition-colors hover:text-emerald-400"
+          className="mb-3 inline-flex items-center gap-1 text-sm text-slate-400 transition-colors hover:text-purple-400"
         >
           <svg
             className="h-4 w-4"
@@ -205,7 +205,7 @@ export default function NewProjectPage() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Ex: Video Institucional 2026"
-            className="w-full rounded-lg border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white placeholder-slate-500 outline-none transition-colors focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+            className="w-full rounded-lg border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white placeholder-slate-500 outline-none transition-colors focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
           />
           {name.length > 0 && !nameValid && (
             <p className="mt-1.5 text-xs text-red-400">
@@ -229,7 +229,7 @@ export default function NewProjectPage() {
             onClick={() => fileInputRef.current?.click()}
             className={`relative cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition-colors ${
               dragActive
-                ? "border-emerald-500 bg-emerald-500/5"
+                ? "border-purple-500 bg-purple-500/5"
                 : csvFile
                 ? "border-slate-600 bg-slate-900"
                 : "border-slate-700 bg-slate-900/50 hover:border-slate-600"
@@ -245,9 +245,9 @@ export default function NewProjectPage() {
 
             {csvFile ? (
               <div className="flex flex-col items-center gap-2">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/15">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-purple-500/15">
                   <svg
-                    className="h-6 w-6 text-emerald-400"
+                    className="h-6 w-6 text-purple-400"
                     fill="none"
                     viewBox="0 0 24 24"
                     strokeWidth={1.5}
@@ -408,7 +408,7 @@ export default function NewProjectPage() {
           <button
             type="submit"
             disabled={!canSubmit}
-            className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {submitting ? (
               <>

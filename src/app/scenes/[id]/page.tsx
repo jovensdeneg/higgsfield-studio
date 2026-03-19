@@ -103,7 +103,7 @@ const GOOGLE_IMAGE_MODELS = [
 // ---------------------------------------------------------------------------
 
 const inputClasses =
-  "w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50";
+  "w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500 disabled:opacity-50";
 
 const labelClasses = "mb-1 block text-xs font-medium text-slate-400";
 
@@ -389,7 +389,7 @@ export default function SceneDetailPage() {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-700 border-t-emerald-500" />
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-700 border-t-purple-500" />
           <p className="text-sm text-slate-400">Carregando cena...</p>
         </div>
       </div>
@@ -655,7 +655,7 @@ export default function SceneDetailPage() {
               {/* Start frame indicator */}
               <div className="rounded-lg bg-slate-800/50 px-4 py-3 text-sm">
                 {selectedStartIndex !== null ? (
-                  <span className="text-emerald-400">
+                  <span className="text-purple-400">
                     Frame inicial: Variacao {selectedStartIndex + 1} selecionada
                   </span>
                 ) : (
@@ -669,7 +669,7 @@ export default function SceneDetailPage() {
               {hasEndFrameImages && (
                 <div className="rounded-lg bg-slate-800/50 px-4 py-3 text-sm">
                   {selectedEndIndex !== null ? (
-                    <span className="text-emerald-400">
+                    <span className="text-purple-400">
                       Frame final: Variacao {selectedEndIndex + 1} selecionada
                     </span>
                   ) : (
@@ -781,11 +781,11 @@ export default function SceneDetailPage() {
             <button
               type="submit"
               disabled={approving || selectedStartIndex === null}
-              className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {approving ? (
                 <>
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-emerald-300 border-t-transparent" />
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-purple-300 border-t-transparent" />
                   Aprovando e enviando...
                 </>
               ) : (

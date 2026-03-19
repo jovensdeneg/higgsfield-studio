@@ -86,7 +86,7 @@ export default function ProductionMonitorPage() {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-700 border-t-emerald-500" />
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-700 border-t-purple-500" />
           <p className="text-sm text-slate-400">Carregando producao...</p>
         </div>
       </div>
@@ -135,7 +135,7 @@ export default function ProductionMonitorPage() {
           </p>
           <Link
             href="/scenes"
-            className="mt-4 inline-block text-sm text-emerald-400 hover:text-emerald-300 hover:underline"
+            className="mt-4 inline-block text-sm text-purple-400 hover:text-purple-300 hover:underline"
           >
             Ver Cenas
           </Link>
@@ -153,7 +153,7 @@ export default function ProductionMonitorPage() {
               </div>
               <div className="h-2 overflow-hidden rounded-full bg-slate-800">
                 <div
-                  className="h-full rounded-full bg-emerald-500 transition-all duration-500"
+                  className="h-full rounded-full bg-purple-500 transition-all duration-500"
                   style={{
                     width: `${scenes.length > 0 ? Math.round((completed.length / scenes.length) * 100) : 0}%`,
                   }}
@@ -198,7 +198,7 @@ export default function ProductionMonitorPage() {
                     <td className="px-4 py-3">
                       <Link
                         href={`/scenes/${scene.scene_id}`}
-                        className="font-mono text-xs text-white hover:text-emerald-400"
+                        className="font-mono text-xs text-white hover:text-purple-400"
                       >
                         {scene.scene_id}
                       </Link>
@@ -237,7 +237,7 @@ export default function ProductionMonitorPage() {
                           href={scene.video_url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-xs text-emerald-400 hover:text-emerald-300 hover:underline"
+                          className="text-xs text-purple-400 hover:text-purple-300 hover:underline"
                         >
                           Abrir video
                         </a>
@@ -275,7 +275,7 @@ export default function ProductionMonitorPage() {
                       <div className="border-b border-slate-800 px-4 py-2">
                         <Link
                           href={`/scenes/${scene.scene_id}`}
-                          className="text-sm font-medium text-white hover:text-emerald-400"
+                          className="text-sm font-medium text-white hover:text-purple-400"
                         >
                           {scene.scene_id}
                         </Link>

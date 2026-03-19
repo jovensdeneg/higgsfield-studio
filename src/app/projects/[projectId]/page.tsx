@@ -64,9 +64,9 @@ const STATUS_CONFIG: Record<
   },
   approved: {
     label: "Aprovado",
-    bg: "bg-emerald-500/15",
-    text: "text-emerald-400",
-    ring: "ring-emerald-500/30",
+    bg: "bg-purple-500/15",
+    text: "text-purple-400",
+    ring: "ring-purple-500/30",
   },
   rejected: {
     label: "Rejeitado",
@@ -489,7 +489,7 @@ export default function ProjectDashboardPage() {
         <div>
           <Link
             href="/projects"
-            className="mb-2 inline-flex items-center gap-1 text-sm text-slate-400 transition-colors hover:text-emerald-400"
+            className="mb-2 inline-flex items-center gap-1 text-sm text-slate-400 transition-colors hover:text-purple-400"
           >
             <svg
               className="h-4 w-4"
@@ -514,7 +514,7 @@ export default function ProjectDashboardPage() {
           <select
             value={imageProvider}
             onChange={(e) => setImageProvider(e.target.value)}
-            className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-white outline-none transition-colors hover:border-slate-600 focus:border-emerald-500"
+            className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-white outline-none transition-colors hover:border-slate-600 focus:border-purple-500"
             disabled={dispatching !== null}
           >
             <option value="higgsfield">Higgsfield</option>
@@ -522,7 +522,7 @@ export default function ProjectDashboardPage() {
             <option value="runway">Runway</option>
           </select>
           <button
-            className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-purple-500 disabled:opacity-50"
             onClick={handleDispatchImages}
             disabled={dispatching !== null}
           >
@@ -599,8 +599,8 @@ export default function ProjectDashboardPage() {
           {readyCount} prontos
         </span>
         <span className="text-slate-700">|</span>
-        <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-400">
-          <span className="h-2 w-2 rounded-full bg-emerald-400" />
+        <span className="flex items-center gap-1.5 text-xs font-medium text-purple-400">
+          <span className="h-2 w-2 rounded-full bg-purple-400" />
           {approvedCount} aprovados
         </span>
         {rejectedCount > 0 && (
@@ -647,7 +647,7 @@ export default function ProjectDashboardPage() {
             onClick={() => setSceneFilter("all")}
             className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
               sceneFilter === "all"
-                ? "bg-emerald-600 text-white"
+                ? "bg-purple-600 text-white"
                 : "bg-slate-800 text-slate-300 hover:bg-slate-700"
             }`}
           >
@@ -659,7 +659,7 @@ export default function ProjectDashboardPage() {
               onClick={() => setSceneFilter(scene)}
               className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                 sceneFilter === scene
-                  ? "bg-emerald-600 text-white"
+                  ? "bg-purple-600 text-white"
                   : "bg-slate-800 text-slate-300 hover:bg-slate-700"
               }`}
             >
@@ -677,7 +677,7 @@ export default function ProjectDashboardPage() {
             onClick={() => setStatusFilter("all")}
             className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
               statusFilter === "all"
-                ? "bg-emerald-600 text-white"
+                ? "bg-purple-600 text-white"
                 : "bg-slate-800 text-slate-300 hover:bg-slate-700"
             }`}
           >
@@ -692,7 +692,7 @@ export default function ProjectDashboardPage() {
                 onClick={() => setStatusFilter(key)}
                 className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                   statusFilter === key
-                    ? "bg-emerald-600 text-white"
+                    ? "bg-purple-600 text-white"
                     : "bg-slate-800 text-slate-300 hover:bg-slate-700"
                 }`}
               >
@@ -713,7 +713,7 @@ export default function ProjectDashboardPage() {
               onClick={() => setTypeFilter("all")}
               className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                 typeFilter === "all"
-                  ? "bg-emerald-600 text-white"
+                  ? "bg-purple-600 text-white"
                   : "bg-slate-800 text-slate-300 hover:bg-slate-700"
               }`}
             >
@@ -725,7 +725,7 @@ export default function ProjectDashboardPage() {
                 onClick={() => setTypeFilter(t)}
                 className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                   typeFilter === t
-                    ? "bg-emerald-600 text-white"
+                    ? "bg-purple-600 text-white"
                     : "bg-slate-800 text-slate-300 hover:bg-slate-700"
                 }`}
               >
@@ -794,7 +794,7 @@ export default function ProjectDashboardPage() {
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={(e) => e.stopPropagation()}
-                    className="absolute bottom-2 right-2 flex h-8 w-8 items-center justify-center rounded-full bg-slate-900/80 text-white opacity-0 backdrop-blur-sm transition-all hover:bg-emerald-600 group-hover:opacity-100"
+                    className="absolute bottom-2 right-2 flex h-8 w-8 items-center justify-center rounded-full bg-slate-900/80 text-white opacity-0 backdrop-blur-sm transition-all hover:bg-purple-600 group-hover:opacity-100"
                     title="Baixar"
                   >
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
@@ -811,7 +811,7 @@ export default function ProjectDashboardPage() {
                     {asset.asset_code}
                   </h3>
                 </div>
-                <p className="mb-2 text-[11px] font-medium text-emerald-400/80">
+                <p className="mb-2 text-[11px] font-medium text-purple-400/80">
                   {asset.scene}
                 </p>
                 <p className="line-clamp-2 text-xs leading-relaxed text-slate-400">
@@ -825,7 +825,7 @@ export default function ProjectDashboardPage() {
                       <button
                         onClick={() => handleApprove(asset.id)}
                         disabled={actionLoading === asset.id}
-                        className="flex-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-emerald-500 disabled:opacity-50"
+                        className="flex-1 rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-purple-500 disabled:opacity-50"
                       >
                         {actionLoading === asset.id ? (
                           <div className="mx-auto h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />

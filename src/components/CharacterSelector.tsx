@@ -40,7 +40,7 @@ export default function CharacterSelector({ selectedId, onSelect, disabled }: Ch
         value={selectedId ?? ""}
         onChange={(e) => onSelect(e.target.value || null)}
         disabled={disabled || loading}
-        className="w-full rounded-lg border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
+        className="w-full rounded-lg border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500 disabled:opacity-50"
       >
         <option value="">Nenhum personagem</option>
         {characters.map((c) => (

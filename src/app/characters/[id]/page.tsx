@@ -66,7 +66,7 @@ export default function CharacterDetailPage() {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-700 border-t-emerald-500" />
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-700 border-t-purple-500" />
           <p className="text-sm text-slate-400">Carregando personagem...</p>
         </div>
       </div>
@@ -88,7 +88,7 @@ export default function CharacterDetailPage() {
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold text-white">{character.name}</h1>
-            <span className="rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-medium text-emerald-400 ring-1 ring-emerald-500/30">
+            <span className="rounded-full bg-purple-500/15 px-2.5 py-0.5 text-xs font-medium text-purple-400 ring-1 ring-purple-500/30">
               {character.photos.length} foto{character.photos.length !== 1 ? "s" : ""}
             </span>
           </div>
@@ -96,7 +96,7 @@ export default function CharacterDetailPage() {
             <p className="mt-1 text-sm text-slate-400">{character.description}</p>
           )}
           <p className="mt-1 text-xs text-slate-500">
-            Use <code className="rounded bg-slate-800 px-1 py-0.5 text-emerald-400">@{character.name}</code> no prompt para incluir este personagem
+            Use <code className="rounded bg-slate-800 px-1 py-0.5 text-purple-400">@{character.name}</code> no prompt para incluir este personagem
           </p>
         </div>
         <button

@@ -236,7 +236,7 @@ export default function VideoSubmitPage() {
               onClick={() => !uploadingStart && startFileRef.current?.click()}
               className={`relative flex cursor-pointer items-center justify-center overflow-hidden rounded-xl border-2 border-dashed transition-colors ${
                 startReady
-                  ? "border-emerald-500/50"
+                  ? "border-purple-500/50"
                   : startUploadError
                     ? "border-red-500/50"
                     : startPreview
@@ -255,7 +255,7 @@ export default function VideoSubmitPage() {
                         Enviando para Higgsfield...
                       </div>
                     ) : startReady ? (
-                      <span className="text-xs text-emerald-400">Enviado com sucesso</span>
+                      <span className="text-xs text-purple-400">Enviado com sucesso</span>
                     ) : startUploadError ? (
                       <span className="text-xs text-red-400">Falha — clique para tentar novamente</span>
                     ) : null}
@@ -276,7 +276,7 @@ export default function VideoSubmitPage() {
               ) : (
                 <div className="flex aspect-video w-full flex-col items-center justify-center gap-2 text-slate-500">
                   {uploadingStart ? (
-                    <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-600 border-t-emerald-400" />
+                    <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-600 border-t-purple-400" />
                   ) : (
                     <>
                       <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -302,7 +302,7 @@ export default function VideoSubmitPage() {
               onClick={() => !uploadingEnd && endFileRef.current?.click()}
               className={`relative flex cursor-pointer items-center justify-center overflow-hidden rounded-xl border-2 border-dashed transition-colors ${
                 endImageUrl
-                  ? "border-emerald-500/50"
+                  ? "border-purple-500/50"
                   : endUploadError
                     ? "border-red-500/50"
                     : endPreview
@@ -320,7 +320,7 @@ export default function VideoSubmitPage() {
                         Enviando para Higgsfield...
                       </div>
                     ) : endImageUrl ? (
-                      <span className="text-xs text-emerald-400">Enviado com sucesso</span>
+                      <span className="text-xs text-purple-400">Enviado com sucesso</span>
                     ) : endUploadError ? (
                       <span className="text-xs text-red-400">Falha — clique para tentar novamente</span>
                     ) : null}
@@ -340,7 +340,7 @@ export default function VideoSubmitPage() {
               ) : (
                 <div className="flex aspect-video w-full flex-col items-center justify-center gap-2 text-slate-500">
                   {uploadingEnd ? (
-                    <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-600 border-t-emerald-400" />
+                    <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-600 border-t-purple-400" />
                   ) : (
                     <>
                       <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -371,7 +371,7 @@ export default function VideoSubmitPage() {
             value={movementPrompt}
             onChange={(e) => setMovementPrompt(e.target.value)}
             placeholder="Descreva o que deve acontecer na cena..."
-            className="w-full rounded-lg border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            className="w-full rounded-lg border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
           />
         </div>
 
@@ -380,14 +380,14 @@ export default function VideoSubmitPage() {
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-400">Modelo</label>
             <select value={model} onChange={(e) => setModel(e.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500">
               {videoModels.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
             </select>
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-400">Duracao</label>
             <select value={duration} onChange={(e) => setDuration(Number(e.target.value))}
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500">
               {videoDurations.map((d) => <option key={d} value={d}>{d} segundos</option>)}
             </select>
           </div>
@@ -395,7 +395,7 @@ export default function VideoSubmitPage() {
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-400">Preset Camera</label>
             <select value={preset} onChange={(e) => setPreset(e.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500">
               <option value="">Nenhum</option>
               {CAMERA_PRESETS.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
@@ -421,7 +421,7 @@ export default function VideoSubmitPage() {
         <button
           onClick={handleSubmit}
           disabled={!canSubmit}
-          className="w-full rounded-lg bg-emerald-600 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+          className="w-full rounded-lg bg-purple-600 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {submitting ? (
             <span className="flex items-center justify-center gap-2">
@@ -441,19 +441,19 @@ export default function VideoSubmitPage() {
         {result && (
           <div className={`space-y-3 rounded-xl border p-6 ${
             result.status === "completed"
-              ? "border-emerald-700 bg-emerald-900/20"
+              ? "border-purple-700 bg-purple-900/20"
               : result.status === "failed"
                 ? "border-red-700 bg-red-900/20"
                 : "border-blue-700 bg-blue-900/20"
           }`}>
             {result.status === "completed" ? (
               <>
-                <h3 className="text-sm font-semibold text-emerald-400">Video Concluido!</h3>
+                <h3 className="text-sm font-semibold text-purple-400">Video Concluido!</h3>
                 {result.video_url && <VideoPlayer url={result.video_url} title="Video Direto" />}
                 {result.scene_id && (
                   <Link
                     href={`/scenes/${result.scene_id}`}
-                    className="inline-block text-xs text-emerald-400 hover:text-emerald-300 hover:underline"
+                    className="inline-block text-xs text-purple-400 hover:text-purple-300 hover:underline"
                   >
                     Ver na pagina da cena →
                   </Link>

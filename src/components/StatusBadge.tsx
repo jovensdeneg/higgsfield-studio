@@ -34,9 +34,9 @@ const STATUS_CONFIG: Record<
   },
   completed: {
     label: "Completa",
-    bg: "bg-emerald-500/15",
-    text: "text-emerald-400",
-    ring: "ring-emerald-500/30",
+    bg: "bg-purple-500/15",
+    text: "text-purple-400",
+    ring: "ring-purple-500/30",
   },
 };
 

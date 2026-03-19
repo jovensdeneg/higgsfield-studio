@@ -54,13 +54,13 @@ export default function PhotoUploadZone({ characterId, onUploadComplete, disable
       onClick={() => !disabled && !uploading && fileRef.current?.click()}
       className={`flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-8 transition-colors ${
         dragOver
-          ? "border-emerald-500 bg-emerald-500/5"
+          ? "border-purple-500 bg-purple-500/5"
           : "border-slate-700 hover:border-slate-600"
       } ${disabled || uploading ? "cursor-not-allowed opacity-50" : ""}`}
     >
       {uploading ? (
         <>
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-600 border-t-emerald-400" />
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-600 border-t-purple-400" />
           <p className="text-sm text-slate-400">{progress}</p>
         </>
       ) : (

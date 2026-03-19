@@ -88,7 +88,7 @@ export default function ScenesPage() {
         </div>
         <Link
           href="/generate"
-          className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500"
+          className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-purple-500"
         >
           + Nova Cena
         </Link>
@@ -101,7 +101,7 @@ export default function ScenesPage() {
             onClick={() => setFilter(f.value)}
             className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
               filter === f.value
-                ? "bg-emerald-600 text-white"
+                ? "bg-purple-600 text-white"
                 : "bg-slate-800 text-slate-300 hover:bg-slate-700"
             }`}
           >
@@ -169,7 +169,7 @@ export default function ScenesPage() {
                         href={scene.video_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-xs text-emerald-400 hover:text-emerald-300 hover:underline"
+                        className="text-xs text-purple-400 hover:text-purple-300 hover:underline"
                       >
                         Ver video
                       </a>
@@ -181,7 +181,7 @@ export default function ScenesPage() {
                     )}
                     <Link
                       href={`/scenes/${scene.scene_id}`}
-                      className="text-xs text-slate-400 hover:text-emerald-400 transition-colors"
+                      className="text-xs text-slate-400 hover:text-purple-400 transition-colors"
                     >
                       Editar / Detalhes →
                     </Link>
@@ -215,14 +215,14 @@ export default function ScenesPage() {
                         key={i}
                         className={`rounded-lg border p-4 transition-colors ${
                           isThisApproved
-                            ? "border-emerald-600/50 bg-emerald-900/10"
+                            ? "border-purple-600/50 bg-purple-900/10"
                             : "border-slate-800 bg-slate-900/30"
                         }`}
                       >
                         <div className="flex items-center gap-2 mb-3">
                           <span className="text-xs font-bold text-slate-400">Opção {i + 1}</span>
                           {isThisApproved && (
-                            <span className="rounded bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white">
+                            <span className="rounded bg-purple-600 px-2 py-0.5 text-[10px] font-bold text-white">
                               APROVADA
                             </span>
                           )}
@@ -290,7 +290,7 @@ export default function ScenesPage() {
                             <button
                               onClick={() => handleQuickApprove(scene, i)}
                               disabled={isApprovingThis || !scene.movement_prompt}
-                              className="flex-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="flex-1 rounded-lg bg-purple-600 px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               {isApprovingThis ? "Enviando..." : `Aprovar e Enviar Opção ${i + 1}`}
                             </button>

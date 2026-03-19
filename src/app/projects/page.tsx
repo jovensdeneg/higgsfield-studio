@@ -84,7 +84,7 @@ export default function ProjectsPage() {
         </div>
         <Link
           href="/projects/new"
-          className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500"
+          className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-purple-500"
         >
           <svg
             className="h-4 w-4"
@@ -128,9 +128,9 @@ export default function ProjectsPage() {
               >
                 {/* Project icon + name */}
                 <div className="mb-4 flex items-start gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-purple-500/15">
                     <svg
-                      className="h-5 w-5 text-emerald-400"
+                      className="h-5 w-5 text-purple-400"
                       fill="none"
                       viewBox="0 0 24 24"
                       strokeWidth={1.5}
@@ -144,7 +144,7 @@ export default function ProjectsPage() {
                     </svg>
                   </div>
                   <div className="min-w-0 flex-1">
-                    <h3 className="truncate text-sm font-semibold text-white group-hover:text-emerald-400 transition-colors">
+                    <h3 className="truncate text-sm font-semibold text-white group-hover:text-purple-400 transition-colors">
                       {project.name}
                     </h3>
                     <p className="text-xs text-slate-500">
@@ -171,7 +171,7 @@ export default function ProjectsPage() {
                   </div>
                   <div className="h-2 overflow-hidden rounded-full bg-slate-800">
                     <div
-                      className="h-full rounded-full bg-emerald-500 transition-all duration-500"
+                      className="h-full rounded-full bg-purple-500 transition-all duration-500"
                       style={{ width: `${progress}%` }}
                     />
                   </div>

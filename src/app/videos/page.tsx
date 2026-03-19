@@ -59,7 +59,7 @@ export default function GalleryPage() {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-700 border-t-emerald-500" />
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-700 border-t-purple-500" />
           <p className="text-sm text-slate-400">Carregando galeria...</p>
         </div>
       </div>
@@ -106,7 +106,7 @@ export default function GalleryPage() {
             onClick={() => setTab(t.key)}
             className={`rounded-full px-4 py-1.5 text-xs font-medium transition-colors ${
               tab === t.key
-                ? "bg-emerald-600 text-white"
+                ? "bg-purple-600 text-white"
                 : "bg-slate-800 text-slate-300 hover:bg-slate-700"
             }`}
           >
@@ -169,7 +169,7 @@ export default function GalleryPage() {
                     className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset ${
                       item.video_url
                         ? "bg-blue-500/15 text-blue-400 ring-blue-500/30"
-                        : "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30"
+                        : "bg-purple-500/15 text-purple-400 ring-purple-500/30"
                     }`}
                   >
                     {item.video_url ? "Video" : "Imagem"}
@@ -182,7 +182,7 @@ export default function GalleryPage() {
                     download
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-900/80 text-white backdrop-blur transition-colors hover:bg-emerald-600"
+                    className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-900/80 text-white backdrop-blur transition-colors hover:bg-purple-600"
                     title="Baixar"
                     onClick={(e) => e.stopPropagation()}
                   >
@@ -201,7 +201,7 @@ export default function GalleryPage() {
                       {item.asset_code}
                     </span>
                     {item.scene && (
-                      <span className="text-[11px] font-medium text-emerald-400/80">
+                      <span className="text-[11px] font-medium text-purple-400/80">
                         {item.scene}
                       </span>
                     )}
@@ -223,7 +223,7 @@ export default function GalleryPage() {
                   {item.source === "project" && (
                     <Link
                       href={`/projects/${item.source_id}`}
-                      className="text-[10px] text-emerald-400 hover:text-emerald-300 hover:underline"
+                      className="text-[10px] text-purple-400 hover:text-purple-300 hover:underline"
                     >
                       {item.source_name}
                     </Link>
@@ -231,7 +231,7 @@ export default function GalleryPage() {
                   {item.source === "scene" && (
                     <Link
                       href={`/scenes/${item.source_id}`}
-                      className="text-[10px] text-emerald-400 hover:text-emerald-300 hover:underline"
+                      className="text-[10px] text-purple-400 hover:text-purple-300 hover:underline"
                     >
                       {item.source_name}
                     </Link>

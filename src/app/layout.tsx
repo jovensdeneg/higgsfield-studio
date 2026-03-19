@@ -9,8 +9,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Jovens de Negócios — Editor de Vídeos",
-  description: "Editor de Vídeos - NOITES 🌃",
+  title: "Noites 🌃 — Jovens de Negocios",
+  description: "Jovens de Negocios - Edicao de Videos",
 };
 
 export default function RootLayout({

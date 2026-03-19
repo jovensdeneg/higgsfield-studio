@@ -56,9 +56,9 @@ export default function ImageGrid({
             key={index}
             type="button"
             onClick={() => onSelect(index)}
-            className={`group relative overflow-hidden rounded-xl border-2 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${
+            className={`group relative overflow-hidden rounded-xl border-2 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${
               isSelected
-                ? "border-emerald-500 shadow-lg shadow-emerald-500/20"
+                ? "border-purple-500 shadow-lg shadow-purple-500/20"
                 : "border-slate-700 hover:border-slate-600"
             }`}
           >
@@ -76,7 +76,7 @@ export default function ImageGrid({
 
             {/* Selected overlay checkmark */}
             {isSelected && (
-              <div className="absolute top-2 right-2 flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500">
+              <div className="absolute top-2 right-2 flex h-6 w-6 items-center justify-center rounded-full bg-purple-500">
                 <svg
                   className="h-4 w-4 text-white"
                   fill="none"

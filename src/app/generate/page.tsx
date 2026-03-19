@@ -311,7 +311,7 @@ export default function GeneratePage() {
             onClick={() => setProvider("google")}
             className={`flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-colors ${
               provider === "google"
-                ? "bg-emerald-600 text-white shadow-sm"
+                ? "bg-purple-600 text-white shadow-sm"
                 : "text-slate-400 hover:text-white"
             }`}
           >
@@ -322,7 +322,7 @@ export default function GeneratePage() {
             onClick={() => setProvider("higgsfield")}
             className={`flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-colors ${
               provider === "higgsfield"
-                ? "bg-emerald-600 text-white shadow-sm"
+                ? "bg-purple-600 text-white shadow-sm"
                 : "text-slate-400 hover:text-white"
             }`}
           >
@@ -330,7 +330,7 @@ export default function GeneratePage() {
           </button>
         </div>
         {provider === "google" && (
-          <p className="mt-2 text-xs text-emerald-400/70">Usando GOOGLE_AI_KEY + Vercel Blob</p>
+          <p className="mt-2 text-xs text-purple-400/70">Usando GOOGLE_AI_KEY + Vercel Blob</p>
         )}
         {provider === "higgsfield" && (
           <p className="mt-2 text-xs text-slate-500">Requer HF_API_KEY + HF_API_SECRET com créditos ativos</p>
@@ -344,7 +344,7 @@ export default function GeneratePage() {
           onClick={() => { setMode("standard"); setError(null); }}
           className={`flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-colors ${
             mode === "standard"
-              ? "bg-emerald-600 text-white shadow-sm"
+              ? "bg-purple-600 text-white shadow-sm"
               : "text-slate-400 hover:text-white"
           }`}
         >
@@ -355,7 +355,7 @@ export default function GeneratePage() {
           onClick={() => { setMode("batch"); setError(null); }}
           className={`flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-colors ${
             mode === "batch"
-              ? "bg-emerald-600 text-white shadow-sm"
+              ? "bg-purple-600 text-white shadow-sm"
               : "text-slate-400 hover:text-white"
           }`}
         >
@@ -376,7 +376,7 @@ export default function GeneratePage() {
               disabled={loading}
             />
             {provider === "google" && (
-              <p className="mt-1 text-xs text-emerald-400/70">Nano Banana aceita referências visuais para manter fidelidade ao personagem.</p>
+              <p className="mt-1 text-xs text-purple-400/70">Nano Banana aceita referências visuais para manter fidelidade ao personagem.</p>
             )}
           </div>
 
@@ -470,7 +470,7 @@ export default function GeneratePage() {
           <button
             type="submit"
             disabled={loading || !startPrompt.trim()}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-3.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-purple-600 px-4 py-3.5 text-sm font-medium text-white transition-colors hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading ? (
               <>
@@ -535,7 +535,7 @@ export default function GeneratePage() {
               disabled={batchLoading}
             />
             {provider === "google" && (
-              <p className="mt-1 text-xs text-emerald-400/70">Nano Banana aceita referências visuais para manter fidelidade ao personagem.</p>
+              <p className="mt-1 text-xs text-purple-400/70">Nano Banana aceita referências visuais para manter fidelidade ao personagem.</p>
             )}
           </div>
 
@@ -548,7 +548,7 @@ export default function GeneratePage() {
               value={batchModel}
               onChange={(e) => setBatchModel(e.target.value)}
               disabled={batchLoading}
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-white focus:border-emerald-500 focus:outline-none disabled:opacity-50"
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-white focus:border-purple-500 focus:outline-none disabled:opacity-50"
             >
               {imageModels.map((m) => (
                 <option key={m.value} value={m.value}>
@@ -572,12 +572,12 @@ export default function GeneratePage() {
               onChange={(e) => setBatchText(e.target.value)}
               disabled={batchLoading}
               placeholder={`##image1\nPhotorealistic 4K, 16:9. A young Brazilian entrepreneur standing in a modern coworking space, golden hour light...\n\n##image2\nSame young entrepreneur now sitting at a minimalist desk, laptop open, warm ambient lighting...\n\n##scene1\nThe entrepreneur walks from the coworking space window to his desk, sits down and opens his laptop with determination...\n\n##image3\nAerial drone view of a bustling Brazilian city at sunset, skyscrapers reflecting warm orange light...\n\n##image4\nStreet-level view of the same city at night, neon signs glowing in Portuguese, motion blur...\n\n##scene2\nSmooth aerial descent from the city skyline transitioning to street level as day turns to night...`}
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-4 py-3 font-mono text-sm text-white placeholder-slate-600 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
+              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-4 py-3 font-mono text-sm text-white placeholder-slate-600 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500 disabled:opacity-50"
             />
 
             <p className="text-xs text-slate-500">
-              Use <code className="rounded bg-slate-800 px-1.5 py-0.5 text-emerald-400">##image1</code>,{" "}
-              <code className="rounded bg-slate-800 px-1.5 py-0.5 text-emerald-400">##image2</code> para frames e{" "}
+              Use <code className="rounded bg-slate-800 px-1.5 py-0.5 text-purple-400">##image1</code>,{" "}
+              <code className="rounded bg-slate-800 px-1.5 py-0.5 text-purple-400">##image2</code> para frames e{" "}
               <code className="rounded bg-slate-800 px-1.5 py-0.5 text-blue-400">##scene1</code> para o prompt do vídeo.
               Imagens ímpares = frame inicial, pares = frame final. O end frame usa o start como referência visual.
             </p>
@@ -589,7 +589,7 @@ export default function GeneratePage() {
               <div className="flex items-center gap-3">
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-800">
                   <svg
-                    className="h-4 w-4 text-emerald-400"
+                    className="h-4 w-4 text-purple-400"
                     fill="none"
                     viewBox="0 0 24 24"
                     strokeWidth={2}
@@ -622,7 +622,7 @@ export default function GeneratePage() {
                       key={scene.sceneIndex}
                       className="flex items-start gap-2 text-xs"
                     >
-                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded bg-slate-800 text-[10px] font-bold text-emerald-400">
+                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded bg-slate-800 text-[10px] font-bold text-purple-400">
                         {scene.sceneIndex + 1}
                       </span>
                       <div className="text-slate-400">
@@ -694,7 +694,7 @@ export default function GeneratePage() {
                   Gerando em Lote...
                 </h3>
                 <div className="text-right">
-                  <span className="text-2xl font-bold text-emerald-400">
+                  <span className="text-2xl font-bold text-purple-400">
                     {batchPercent}%
                   </span>
                   <p className="font-mono text-xs text-blue-400">
@@ -706,7 +706,7 @@ export default function GeneratePage() {
               {/* Progress bar */}
               <div className="h-3 w-full overflow-hidden rounded-full bg-slate-800">
                 <div
-                  className="h-full rounded-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-700 ease-out"
+                  className="h-full rounded-full bg-gradient-to-r from-purple-600 to-purple-400 transition-all duration-700 ease-out"
                   style={{ width: `${Math.max(batchPercent, 3)}%` }}
                 />
               </div>
@@ -728,8 +728,8 @@ export default function GeneratePage() {
 
           {/* Results */}
           {batchResults.length > 0 && !batchLoading && (
-            <div className="rounded-xl border border-emerald-800/50 bg-emerald-900/20 p-5 space-y-4">
-              <h3 className="text-sm font-semibold text-emerald-400">
+            <div className="rounded-xl border border-purple-800/50 bg-purple-900/20 p-5 space-y-4">
+              <h3 className="text-sm font-semibold text-purple-400">
                 {batchMessage}
               </h3>
 
@@ -738,7 +738,7 @@ export default function GeneratePage() {
                   <Link
                     key={r.scene_id}
                     href={`/scenes/${r.scene_id}`}
-                    className="block rounded-lg border border-slate-800 bg-slate-900 px-4 py-3 transition-colors hover:border-emerald-700 hover:bg-slate-800"
+                    className="block rounded-lg border border-slate-800 bg-slate-900 px-4 py-3 transition-colors hover:border-purple-700 hover:bg-slate-800"
                   >
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium text-white">
@@ -774,7 +774,7 @@ export default function GeneratePage() {
 
               <Link
                 href="/scenes"
-                className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500"
+                className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-purple-500"
               >
                 Ver Todas as Cenas
                 <svg
@@ -799,7 +799,7 @@ export default function GeneratePage() {
             <button
               type="submit"
               disabled={batchLoading || parsePreview.scenes.length === 0}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-3.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-purple-600 px-4 py-3.5 text-sm font-medium text-white transition-colors hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {batchLoading ? (
                 <>

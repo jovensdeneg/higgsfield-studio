@@ -15,6 +15,33 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
+  position: relative;
+}
+
+/* Subtle starry sky background */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    radial-gradient(1px 1px at 10% 15%, rgba(255,255,255,0.12) 50%, transparent 50%),
+    radial-gradient(1px 1px at 25% 40%, rgba(255,255,255,0.08) 50%, transparent 50%),
+    radial-gradient(1.5px 1.5px at 50% 10%, rgba(255,255,255,0.10) 50%, transparent 50%),
+    radial-gradient(1px 1px at 70% 25%, rgba(255,255,255,0.07) 50%, transparent 50%),
+    radial-gradient(1px 1px at 85% 60%, rgba(255,255,255,0.09) 50%, transparent 50%),
+    radial-gradient(1.5px 1.5px at 15% 70%, rgba(255,255,255,0.06) 50%, transparent 50%),
+    radial-gradient(1px 1px at 40% 80%, rgba(255,255,255,0.08) 50%, transparent 50%),
+    radial-gradient(1px 1px at 60% 55%, rgba(255,255,255,0.05) 50%, transparent 50%),
+    radial-gradient(1px 1px at 90% 85%, rgba(255,255,255,0.07) 50%, transparent 50%),
+    radial-gradient(1.5px 1.5px at 35% 95%, rgba(255,255,255,0.06) 50%, transparent 50%),
+    radial-gradient(1px 1px at 5% 50%, rgba(255,255,255,0.08) 50%, transparent 50%),
+    radial-gradient(1px 1px at 75% 90%, rgba(255,255,255,0.05) 50%, transparent 50%),
+    radial-gradient(1px 1px at 55% 35%, rgba(255,255,255,0.07) 50%, transparent 50%),
+    radial-gradient(1px 1px at 95% 45%, rgba(255,255,255,0.06) 50%, transparent 50%),
+    radial-gradient(ellipse at 20% 0%, rgba(88,28,135,0.08) 0%, transparent 60%);
+  background-size: 100% 100%;
 }
 
 /* Custom scrollbar for dark theme */

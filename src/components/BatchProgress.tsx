@@ -20,7 +20,7 @@ export default function BatchProgress({ summary }: BatchProgressProps) {
       {/* Header */}
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-white">Progresso do Batch</h3>
-        <span className="text-2xl font-bold text-emerald-400">
+        <span className="text-2xl font-bold text-purple-400">
           {Math.round(percent_complete)}%
         </span>
       </div>
@@ -28,7 +28,7 @@ export default function BatchProgress({ summary }: BatchProgressProps) {
       {/* Progress Bar */}
       <div className="mb-4 h-3 w-full overflow-hidden rounded-full bg-slate-800">
         <div
-          className="h-full rounded-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-500 ease-out"
+          className="h-full rounded-full bg-gradient-to-r from-purple-600 to-purple-400 transition-all duration-500 ease-out"
           style={{ width: `${Math.min(percent_complete, 100)}%` }}
         />
       </div>
@@ -36,7 +36,7 @@ export default function BatchProgress({ summary }: BatchProgressProps) {
       {/* Stats */}
       <div className="flex items-center gap-6 text-sm">
         <div className="flex items-center gap-2">
-          <span className="h-2 w-2 rounded-full bg-emerald-500" />
+          <span className="h-2 w-2 rounded-full bg-purple-500" />
           <span className="text-slate-400">
             <span className="font-medium text-slate-200">{completed}</span>{" "}
             {completed === 1 ? "completo" : "completos"}
