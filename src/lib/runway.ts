@@ -103,11 +103,15 @@ export async function submitVideoRunway(opts: {
   const rawDuration = opts.duration ?? 5;
   const duration = Math.max(2, Math.min(10, Math.round(rawDuration)));
   const ratio = opts.ratio || "1280:720";
+  // Runway limits promptText to 1000 chars
+  const promptText = opts.prompt.length > 1000
+    ? opts.prompt.slice(0, 997) + "..."
+    : opts.prompt;
 
   const task = await client.imageToVideo.create({
     model: model as "gen4.5",
     promptImage: opts.startImageUrl,
-    promptText: opts.prompt,
+    promptText,
     ratio: ratio as "1280:720",
     duration,
   });
@@ -137,12 +141,16 @@ export async function generateVideoRunway(opts: {
   const rawDuration = opts.duration ?? 5;
   const duration = Math.max(2, Math.min(10, Math.round(rawDuration)));
   const ratio = opts.ratio || "1280:720";
+  // Runway limits promptText to 1000 chars
+  const promptText = opts.prompt.length > 1000
+    ? opts.prompt.slice(0, 997) + "..."
+    : opts.prompt;
 
   try {
     const task = await client.imageToVideo.create({
       model: model as "gen4.5",
       promptImage: opts.startImageUrl,
-      promptText: opts.prompt,
+      promptText,
       ratio: ratio as "1280:720",
       duration,
     }).waitForTaskOutput();

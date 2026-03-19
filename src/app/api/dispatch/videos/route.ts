@@ -230,9 +230,16 @@ export async function POST(request: NextRequest) {
           })
           .eq("id", jobId);
 
+        let displayError = errorMessage;
+        if (errorMessage.includes("Not enough credits")) {
+          displayError = "Sem creditos. Tente outro provider.";
+        } else if (errorMessage.includes("too_big")) {
+          displayError = "Prompt muito longo para este provider.";
+        }
+
         await supabase
           .from("assets")
-          .update({ status: "failed" })
+          .update({ status: "failed", error_message: displayError.slice(0, 500) })
           .eq("id", asset.id);
 
         errors.push({ assetId: asset.id, error: errorMessage });
