@@ -21,6 +21,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { checkStatus, getResult } from "@/lib/higgsfield";
 import { checkStatusGoogle, getResultGoogle } from "@/lib/google-ai";
+import { checkStatusRunway, getResultRunway } from "@/lib/runway";
 import type { GenerationJobRow } from "@/types";
 
 export async function POST(request: NextRequest) {
@@ -105,19 +106,25 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      // 2. Determine provider — check status_url or request_payload since
-      //    tools like "runway" get routed to Google Veo but keep their original provider name
+      // 2. Determine provider — check status_url or request_payload
       const statusUrl = (job as unknown as Record<string, unknown>).status_url as string | null;
       const reqPayload = job.request_payload as Record<string, unknown> | null;
+      const isRunway =
+        reqPayload?.provider === "runway" ||
+        (statusUrl != null && statusUrl.includes("api.dev.runwayml.com"));
       const isGoogle =
-        job.provider.startsWith("google_") ||
-        (statusUrl != null && statusUrl.includes("generativelanguage.googleapis.com")) ||
-        (reqPayload?.provider === "google");
+        !isRunway && (
+          job.provider.startsWith("google_") ||
+          (statusUrl != null && statusUrl.includes("generativelanguage.googleapis.com")) ||
+          (reqPayload?.provider === "google")
+        );
 
       try {
-        const statusResult = isGoogle
-          ? await checkStatusGoogle(job.external_task_id)
-          : await checkStatus(job.external_task_id);
+        const statusResult = isRunway
+          ? await checkStatusRunway(job.external_task_id)
+          : isGoogle
+            ? await checkStatusGoogle(job.external_task_id)
+            : await checkStatus(job.external_task_id);
 
         const externalStatus = statusResult.status;
 
@@ -127,7 +134,9 @@ export async function POST(request: NextRequest) {
 
           // Fetch the full result to get the video URL
           try {
-            const fullResult = isGoogle
+            const fullResult = isRunway
+              ? await getResultRunway(job.external_task_id)
+              : isGoogle
               ? await getResultGoogle(job.external_task_id)
               : await getResult(job.external_task_id);
 

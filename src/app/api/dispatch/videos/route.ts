@@ -5,12 +5,13 @@
  * Processes sequentially with a 3s delay between requests.
  * Stops immediately on "Not enough credits" (403) errors to avoid waste.
  *
- * Body: { assetIds: string[], provider?: "higgsfield" | "google", model?: string }
+ * Body: { assetIds: string[], provider?: "higgsfield" | "google" | "runway", model?: string }
  */
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { submitVideo } from "@/lib/higgsfield";
 import { submitVideoGoogle } from "@/lib/google-ai";
+import { submitVideoRunway } from "@/lib/runway";
 import type {
   AssetRow,
   GenerationTool,
@@ -20,13 +21,13 @@ import type {
 // Maps GenerationTool enum to provider + default video model
 const VIDEO_TOOL_MAP: Record<
   string,
-  { provider: "higgsfield" | "google"; model: string }
+  { provider: "higgsfield" | "google" | "runway"; model: string }
 > = {
   higgsfield_kling: { provider: "higgsfield", model: "kling-3.0" },
   higgsfield_dop: { provider: "higgsfield", model: "dop-turbo" },
   google_veo: { provider: "google", model: "veo-3.1" },
+  runway: { provider: "runway", model: "gen4.5" },
   // Unmapped tools → route to Higgsfield Kling as default
-  runway: { provider: "higgsfield", model: "kling-3.0" },
   kling_fal: { provider: "higgsfield", model: "kling-3.0" },
 };
 
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest) {
       model: overrideModel,
     } = body as {
       assetIds?: string[];
-      provider?: "higgsfield" | "google";
+      provider?: "higgsfield" | "google" | "runway";
       model?: string;
     };
 
@@ -96,12 +97,12 @@ export async function POST(request: NextRequest) {
       const toolKey = asset.video_tool as string | null;
       const mapping = toolKey ? VIDEO_TOOL_MAP[toolKey] : null;
 
-      let provider: "higgsfield" | "google";
+      let provider: "higgsfield" | "google" | "runway";
       let model: string;
 
       if (overrideProvider) {
         provider = overrideProvider;
-        model = overrideModel ?? mapping?.model ?? "kling-3.0";
+        model = overrideModel ?? (provider === "runway" ? "gen4.5" : mapping?.model ?? "kling-3.0");
       } else if (mapping) {
         provider = mapping.provider;
         model = overrideModel ?? mapping.model;
@@ -114,11 +115,18 @@ export async function POST(request: NextRequest) {
       // Compute duration and prompt
       const rawDuration = (asset.parameters as Record<string, unknown>)?.duration;
       const parsedDuration = rawDuration ? Number(rawDuration) : 5;
-      // Higgsfield Kling only accepts [5, 10]; snap to nearest valid value
-      const VALID_DURATIONS = [5, 10];
-      const duration = VALID_DURATIONS.reduce((prev, curr) =>
-        Math.abs(curr - parsedDuration) < Math.abs(prev - parsedDuration) ? curr : prev
-      );
+
+      let duration: number;
+      if (provider === "runway") {
+        // Runway accepts 2-10 integer seconds
+        duration = Math.max(2, Math.min(10, Math.round(parsedDuration)));
+      } else {
+        // Higgsfield Kling only accepts [5, 10]; snap to nearest valid value
+        const VALID_DURATIONS = [5, 10];
+        duration = VALID_DURATIONS.reduce((prev, curr) =>
+          Math.abs(curr - parsedDuration) < Math.abs(prev - parsedDuration) ? curr : prev
+        );
+      }
       const prompt = asset.prompt_video ?? asset.description;
       const preset = (asset.parameters as Record<string, unknown>)?.preset as string | undefined;
 
@@ -170,7 +178,14 @@ export async function POST(request: NextRequest) {
           status_url: string;
         };
 
-        if (provider === "google") {
+        if (provider === "runway") {
+          submission = await submitVideoRunway({
+            prompt,
+            startImageUrl: asset.image_url!,
+            model,
+            duration,
+          });
+        } else if (provider === "google") {
           submission = await submitVideoGoogle({
             prompt,
             startImageUrl: asset.image_url!,

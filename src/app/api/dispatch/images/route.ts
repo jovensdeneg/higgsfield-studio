@@ -5,7 +5,7 @@
  * The frontend should call this endpoint repeatedly for each asset in sequence.
  * This avoids Vercel's 60s function timeout on the Hobby plan.
  *
- * Body: { assetId: string, provider?: "higgsfield" | "google", model?: string }
+ * Body: { assetId: string, provider?: "higgsfield" | "google" | "runway", model?: string }
  *
  * Legacy support: also accepts { assetIds: string[] } — will process only the FIRST one.
  */
@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { generateImage } from "@/lib/higgsfield";
 import { generateImageGoogle } from "@/lib/google-ai";
+import { generateImageRunway } from "@/lib/runway";
 import type {
   AssetRow,
   GenerationTool,
@@ -22,12 +23,13 @@ import type {
 // Maps GenerationTool enum to provider + model
 const IMAGE_TOOL_MAP: Record<
   string,
-  { provider: "higgsfield" | "google"; model: string }
+  { provider: "higgsfield" | "google" | "runway"; model: string }
 > = {
   higgsfield_nano_banana: { provider: "higgsfield", model: "nano-banana-pro" },
   higgsfield_flux: { provider: "higgsfield", model: "flux-pro-kontext-max" },
   higgsfield_seedream: { provider: "higgsfield", model: "seedream-v4" },
   google_nano_banana: { provider: "google", model: "nano-banana-pro" },
+  runway: { provider: "runway", model: "gen4_image_turbo" },
   // Unmapped tools → route to Higgsfield as default
   ideogram: { provider: "higgsfield", model: "nano-banana-pro" },
   flux_fal: { provider: "higgsfield", model: "flux-pro-kontext-max" },
@@ -48,7 +50,7 @@ export async function POST(request: NextRequest) {
     } = body as {
       assetId?: string;
       assetIds?: string[];
-      provider?: "higgsfield" | "google";
+      provider?: "higgsfield" | "google" | "runway";
       model?: string;
     };
 
@@ -106,12 +108,12 @@ export async function POST(request: NextRequest) {
     const toolKey = asset.image_tool as string | null;
     const mapping = toolKey ? IMAGE_TOOL_MAP[toolKey] : null;
 
-    let provider: "higgsfield" | "google";
+    let provider: "higgsfield" | "google" | "runway";
     let model: string;
 
     if (overrideProvider) {
       provider = overrideProvider;
-      model = overrideModel ?? mapping?.model ?? "nano-banana-pro";
+      model = overrideModel ?? (provider === "runway" ? "gen4_image_turbo" : mapping?.model ?? "nano-banana-pro");
     } else if (mapping) {
       provider = mapping.provider;
       model = overrideModel ?? mapping.model;
@@ -184,7 +186,14 @@ export async function POST(request: NextRequest) {
     try {
       let imageUrl: string;
 
-      if (provider === "google") {
+      if (provider === "runway") {
+        const result = await generateImageRunway(
+          asset.prompt_image!,
+          model,
+          referenceImages,
+        );
+        imageUrl = result.url;
+      } else if (provider === "google") {
         const result = await generateImageGoogle(
           asset.prompt_image!,
           model,

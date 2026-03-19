@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@runwayml/sdk": "^3.16.0",
     "@supabase/ssr": "^0.9.0",
     "@supabase/supabase-js": "^2.99.1",
     "@vercel/blob": "^2.3.1",

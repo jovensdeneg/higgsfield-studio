@@ -119,6 +119,7 @@ export default function ProjectDashboardPage() {
   const [rejectNotes, setRejectNotes] = useState<Record<string, string>>({});
   const [showRejectInput, setShowRejectInput] = useState<string | null>(null);
   const [imageProvider, setImageProvider] = useState<string>("higgsfield");
+  const [videoProvider, setVideoProvider] = useState<string>("runway");
   const dispatchQueueRef = useRef<string[]>([]);
   const isDispatchingRef = useRef(false);
 
@@ -386,7 +387,7 @@ export default function ProjectDashboardPage() {
       const res = await fetch("/api/dispatch/videos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ assetIds: approvedIds }),
+        body: JSON.stringify({ assetIds: approvedIds, provider: videoProvider }),
       });
       const data = await res.json();
       setDispatchResult(
@@ -518,6 +519,7 @@ export default function ProjectDashboardPage() {
           >
             <option value="higgsfield">Higgsfield</option>
             <option value="google">Google AI</option>
+            <option value="runway">Runway</option>
           </select>
           <button
             className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500 disabled:opacity-50"
@@ -543,6 +545,16 @@ export default function ProjectDashboardPage() {
             )}
             Gerar Imagens {pendingCount > 0 && `(${pendingCount})`}
           </button>
+          <select
+            value={videoProvider}
+            onChange={(e) => setVideoProvider(e.target.value)}
+            className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-white outline-none transition-colors hover:border-slate-600 focus:border-blue-500"
+            disabled={dispatching !== null}
+          >
+            <option value="runway">Runway Gen4.5</option>
+            <option value="higgsfield">Higgsfield Kling</option>
+            <option value="google">Google Veo</option>
+          </select>
           <button
             className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-50"
             onClick={handleDispatchVideos}
