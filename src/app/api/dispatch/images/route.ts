@@ -224,9 +224,17 @@ export async function POST(request: NextRequest) {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
 
+      // Simplify error for user display
+      let displayError = errorMessage;
+      if (errorMessage.includes("Not enough credits")) {
+        displayError = "Sem creditos no Higgsfield. Tente com Google AI.";
+      } else if (errorMessage.includes("503")) {
+        displayError = "Servidor sobrecarregado. Tente novamente em alguns minutos.";
+      }
+
       await supabase
         .from("assets")
-        .update({ status: "failed" })
+        .update({ status: "failed", error_message: displayError.slice(0, 500) })
         .eq("id", asset.id);
 
       await supabase
