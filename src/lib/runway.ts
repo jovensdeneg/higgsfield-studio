@@ -13,6 +13,62 @@
  */
 import RunwayML, { TaskFailedError } from "@runwayml/sdk";
 
+const RUNWAY_MAX_PROMPT = 1000;
+
+/**
+ * Uses Google Gemini to intelligently condense a video prompt to fit
+ * within Runway's 1000-char limit, preserving essential details.
+ */
+async function condensePrompt(prompt: string): Promise<string> {
+  if (prompt.length <= RUNWAY_MAX_PROMPT) return prompt;
+
+  const apiKey = process.env.GOOGLE_AI_KEY;
+  if (!apiKey) {
+    // Fallback to simple truncation if no Google key
+    return prompt.slice(0, RUNWAY_MAX_PROMPT - 3) + "...";
+  }
+
+  const systemPrompt = `You are a video prompt optimizer. Condense the following video generation prompt to UNDER 950 characters while preserving ALL essential details: camera movement, subject actions, timing, mood, lighting, and style. Remove redundancy and verbose descriptions. Keep it as a single paragraph. Output ONLY the condensed prompt, nothing else.`;
+
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: systemPrompt }] },
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { maxOutputTokens: 400, temperature: 0.3 },
+        }),
+      },
+    );
+
+    if (!res.ok) {
+      console.error("[Runway] Gemini condense failed:", res.status);
+      return prompt.slice(0, RUNWAY_MAX_PROMPT - 3) + "...";
+    }
+
+    const data = await res.json();
+    const condensed =
+      data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "";
+
+    if (condensed.length > 0 && condensed.length <= RUNWAY_MAX_PROMPT) {
+      return condensed;
+    }
+
+    // If Gemini output is still too long, truncate it
+    if (condensed.length > RUNWAY_MAX_PROMPT) {
+      return condensed.slice(0, RUNWAY_MAX_PROMPT - 3) + "...";
+    }
+
+    return prompt.slice(0, RUNWAY_MAX_PROMPT - 3) + "...";
+  } catch (err) {
+    console.error("[Runway] Gemini condense error:", err);
+    return prompt.slice(0, RUNWAY_MAX_PROMPT - 3) + "...";
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Client (lazy singleton)
 // ---------------------------------------------------------------------------
@@ -103,10 +159,8 @@ export async function submitVideoRunway(opts: {
   const rawDuration = opts.duration ?? 5;
   const duration = Math.max(2, Math.min(10, Math.round(rawDuration)));
   const ratio = opts.ratio || "1280:720";
-  // Runway limits promptText to 1000 chars
-  const promptText = opts.prompt.length > 1000
-    ? opts.prompt.slice(0, 997) + "..."
-    : opts.prompt;
+  // Runway limits promptText to 1000 chars — use Gemini to condense if needed
+  const promptText = await condensePrompt(opts.prompt);
 
   const task = await client.imageToVideo.create({
     model: model as "gen4.5",
@@ -141,10 +195,8 @@ export async function generateVideoRunway(opts: {
   const rawDuration = opts.duration ?? 5;
   const duration = Math.max(2, Math.min(10, Math.round(rawDuration)));
   const ratio = opts.ratio || "1280:720";
-  // Runway limits promptText to 1000 chars
-  const promptText = opts.prompt.length > 1000
-    ? opts.prompt.slice(0, 997) + "..."
-    : opts.prompt;
+  // Runway limits promptText to 1000 chars — use Gemini to condense if needed
+  const promptText = await condensePrompt(opts.prompt);
 
   try {
     const task = await client.imageToVideo.create({
