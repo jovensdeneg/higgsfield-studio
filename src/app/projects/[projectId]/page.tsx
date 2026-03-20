@@ -320,13 +320,13 @@ export default function ProjectDashboardPage() {
       const feedback = rejectNotes[assetId]?.trim() || asset?.review_notes?.trim();
       const provider = regenVideoProvider[assetId] ?? videoProvider;
 
-      // If there's feedback, append it to prompt_video before retrying
-      if (feedback && asset?.prompt_video) {
-        const updatedPrompt = `${asset.prompt_video}\n\n[FEEDBACK: ${feedback}]`;
+      // Send ONLY the feedback as prompt_video (not the original prompt)
+      // The base image is kept intact — provider uses feedback + image to regenerate
+      if (feedback) {
         await fetch(`/api/projects/${projectId}/assets`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ids: [assetId], updates: { prompt_video: updatedPrompt } }),
+          body: JSON.stringify({ ids: [assetId], updates: { prompt_video: feedback } }),
         });
       }
 
