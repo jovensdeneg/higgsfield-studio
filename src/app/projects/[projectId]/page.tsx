@@ -912,7 +912,7 @@ export default function ProjectDashboardPage() {
                         Rejeitar
                       </button>
                     </div>
-                    {/* Reject: feedback + provider selector + send (rejects AND regenerates in one step) */}
+                    {/* Reject: feedback + provider selector + regenerate options */}
                     {showRejectInput === asset.id && (
                       <div className="space-y-1.5">
                         <input
@@ -927,6 +927,35 @@ export default function ProjectDashboardPage() {
                           }
                           className="w-full rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:border-purple-600 focus:outline-none"
                         />
+                        {/* Regenerar Video option — only if video already exists */}
+                        {asset.video_url && (
+                          <div className="flex items-center gap-1.5">
+                            <select
+                              value={regenVideoProvider[asset.id] ?? videoProvider}
+                              onChange={(e) => setRegenVideoProvider((prev) => ({ ...prev, [asset.id]: e.target.value }))}
+                              className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1.5 text-[10px] text-white outline-none"
+                            >
+                              <option value="runway">Runway</option>
+                              <option value="higgsfield">Higgsfield</option>
+                              <option value="google">Google</option>
+                            </select>
+                            <button
+                              onClick={() => handleRetryVideo(asset.id)}
+                              disabled={
+                                actionLoading === asset.id ||
+                                (rejectNotes[asset.id]?.trim().length ?? 0) < 3
+                              }
+                              className="flex-1 rounded-lg border border-blue-700/50 bg-blue-900/20 px-2 py-1.5 text-[10px] font-medium text-blue-400 transition-colors hover:bg-blue-900/40 disabled:opacity-50"
+                            >
+                              {actionLoading === asset.id ? (
+                                <div className="mx-auto h-3 w-3 animate-spin rounded-full border-2 border-blue-400/30 border-t-blue-400" />
+                              ) : (
+                                "Regenerar Video"
+                              )}
+                            </button>
+                          </div>
+                        )}
+                        {/* Regenerar Imagem option — always available */}
                         <div className="flex items-center gap-1.5">
                           <select
                             value={regenImageProvider[asset.id] ?? imageProvider}
