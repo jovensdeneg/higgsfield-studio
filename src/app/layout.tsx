@@ -23,29 +23,62 @@ export default function RootLayout({
       <body
         className={`${inter.variable} min-h-screen bg-slate-950 font-sans text-white antialiased`}
       >
-        <div className="pointer-events-none fixed inset-0 -z-10" aria-hidden="true">
+        {/* Starry sky background */}
+        <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden" aria-hidden="true">
+          {/* Layer 1: Dense small stars */}
           <div className="absolute inset-0" style={{
-            backgroundImage: `radial-gradient(1px 1px at 10% 20%, rgba(255,255,255,0.15), transparent),
-              radial-gradient(1px 1px at 30% 50%, rgba(255,255,255,0.12), transparent),
-              radial-gradient(1px 1px at 50% 10%, rgba(255,255,255,0.1), transparent),
-              radial-gradient(1px 1px at 70% 80%, rgba(255,255,255,0.13), transparent),
-              radial-gradient(1px 1px at 90% 40%, rgba(255,255,255,0.11), transparent),
-              radial-gradient(1.5px 1.5px at 15% 75%, rgba(255,255,255,0.18), transparent),
-              radial-gradient(1px 1px at 45% 90%, rgba(255,255,255,0.1), transparent),
-              radial-gradient(1.5px 1.5px at 85% 15%, rgba(255,255,255,0.16), transparent),
-              radial-gradient(1px 1px at 5% 55%, rgba(255,255,255,0.09), transparent),
-              radial-gradient(1px 1px at 60% 35%, rgba(255,255,255,0.12), transparent),
-              radial-gradient(1px 1px at 25% 85%, rgba(255,255,255,0.1), transparent),
-              radial-gradient(1.5px 1.5px at 75% 60%, rgba(255,255,255,0.14), transparent),
-              radial-gradient(1px 1px at 40% 5%, rgba(255,255,255,0.11), transparent),
-              radial-gradient(1px 1px at 95% 70%, rgba(255,255,255,0.1), transparent),
-              radial-gradient(1px 1px at 55% 55%, rgba(255,255,255,0.08), transparent),
-              radial-gradient(1.5px 1.5px at 20% 40%, rgba(255,255,255,0.15), transparent),
-              radial-gradient(1px 1px at 80% 25%, rgba(255,255,255,0.1), transparent),
-              radial-gradient(1px 1px at 35% 70%, rgba(255,255,255,0.12), transparent),
-              radial-gradient(1px 1px at 65% 95%, rgba(255,255,255,0.09), transparent),
-              radial-gradient(1.5px 1.5px at 50% 50%, rgba(255,255,255,0.06), transparent)`,
+            backgroundImage: `
+              radial-gradient(1px 1px at 3% 8%, rgba(255,255,255,0.5), transparent),
+              radial-gradient(1px 1px at 7% 45%, rgba(255,255,255,0.35), transparent),
+              radial-gradient(1px 1px at 12% 22%, rgba(255,255,255,0.4), transparent),
+              radial-gradient(1px 1px at 16% 67%, rgba(255,255,255,0.3), transparent),
+              radial-gradient(1px 1px at 21% 12%, rgba(255,255,255,0.45), transparent),
+              radial-gradient(1px 1px at 27% 88%, rgba(255,255,255,0.35), transparent),
+              radial-gradient(1px 1px at 33% 35%, rgba(255,255,255,0.4), transparent),
+              radial-gradient(1px 1px at 38% 72%, rgba(255,255,255,0.3), transparent),
+              radial-gradient(1px 1px at 44% 5%, rgba(255,255,255,0.45), transparent),
+              radial-gradient(1px 1px at 48% 52%, rgba(255,255,255,0.35), transparent),
+              radial-gradient(1px 1px at 54% 18%, rgba(255,255,255,0.4), transparent),
+              radial-gradient(1px 1px at 59% 78%, rgba(255,255,255,0.3), transparent),
+              radial-gradient(1px 1px at 64% 42%, rgba(255,255,255,0.35), transparent),
+              radial-gradient(1px 1px at 71% 8%, rgba(255,255,255,0.45), transparent),
+              radial-gradient(1px 1px at 76% 62%, rgba(255,255,255,0.3), transparent),
+              radial-gradient(1px 1px at 82% 28%, rgba(255,255,255,0.4), transparent),
+              radial-gradient(1px 1px at 87% 85%, rgba(255,255,255,0.35), transparent),
+              radial-gradient(1px 1px at 93% 15%, rgba(255,255,255,0.4), transparent),
+              radial-gradient(1px 1px at 97% 55%, rgba(255,255,255,0.3), transparent),
+              radial-gradient(1px 1px at 5% 95%, rgba(255,255,255,0.35), transparent)`,
             backgroundSize: '100% 100%',
+          }} />
+          {/* Layer 2: Brighter accent stars */}
+          <div className="absolute inset-0" style={{
+            backgroundImage: `
+              radial-gradient(1.5px 1.5px at 8% 30%, rgba(255,255,255,0.7), transparent),
+              radial-gradient(2px 2px at 22% 55%, rgba(200,180,255,0.5), transparent),
+              radial-gradient(1.5px 1.5px at 35% 15%, rgba(255,255,255,0.6), transparent),
+              radial-gradient(2px 2px at 52% 82%, rgba(180,200,255,0.45), transparent),
+              radial-gradient(1.5px 1.5px at 67% 25%, rgba(255,255,255,0.55), transparent),
+              radial-gradient(2px 2px at 78% 48%, rgba(200,180,255,0.5), transparent),
+              radial-gradient(1.5px 1.5px at 88% 72%, rgba(255,255,255,0.6), transparent),
+              radial-gradient(2px 2px at 42% 38%, rgba(180,200,255,0.4), transparent),
+              radial-gradient(1.5px 1.5px at 15% 92%, rgba(255,255,255,0.55), transparent),
+              radial-gradient(2px 2px at 95% 10%, rgba(200,180,255,0.5), transparent)`,
+            backgroundSize: '100% 100%',
+          }} />
+          {/* Layer 3: Repeating star field for density */}
+          <div className="absolute inset-0 opacity-40" style={{
+            backgroundImage: `
+              radial-gradient(1px 1px at 18px 32px, rgba(255,255,255,0.6), transparent),
+              radial-gradient(1px 1px at 67px 11px, rgba(255,255,255,0.5), transparent),
+              radial-gradient(1px 1px at 112px 58px, rgba(255,255,255,0.4), transparent),
+              radial-gradient(1px 1px at 43px 89px, rgba(255,255,255,0.55), transparent),
+              radial-gradient(1px 1px at 156px 23px, rgba(255,255,255,0.45), transparent),
+              radial-gradient(1px 1px at 89px 72px, rgba(255,255,255,0.5), transparent),
+              radial-gradient(1px 1px at 134px 45px, rgba(255,255,255,0.4), transparent),
+              radial-gradient(1px 1px at 23px 67px, rgba(255,255,255,0.55), transparent),
+              radial-gradient(1px 1px at 178px 88px, rgba(255,255,255,0.45), transparent),
+              radial-gradient(1px 1px at 56px 34px, rgba(255,255,255,0.5), transparent)`,
+            backgroundSize: '200px 100px',
           }} />
         </div>
         <Navbar />

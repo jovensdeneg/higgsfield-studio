@@ -120,6 +120,9 @@ export default function ProjectDashboardPage() {
   const [showRejectInput, setShowRejectInput] = useState<string | null>(null);
   const [imageProvider, setImageProvider] = useState<string>("higgsfield");
   const [videoProvider, setVideoProvider] = useState<string>("runway");
+  // Per-asset provider overrides for regeneration
+  const [regenImageProvider, setRegenImageProvider] = useState<Record<string, string>>({});
+  const [regenVideoProvider, setRegenVideoProvider] = useState<Record<string, string>>({});
   const dispatchQueueRef = useRef<string[]>([]);
   const isDispatchingRef = useRef(false);
 
@@ -260,9 +263,9 @@ export default function ProjectDashboardPage() {
   async function handleRegenerate(assetId: string) {
     setActionLoading(assetId);
     try {
-      // Find the asset to get its review_notes and original prompt
       const asset = assets.find((a) => a.id === assetId);
       const feedback = rejectNotes[assetId]?.trim() || asset?.review_notes?.trim();
+      const provider = regenImageProvider[assetId] ?? imageProvider;
 
       // Build updated prompt: append feedback to original prompt
       let updatedPrompt: string | undefined;
@@ -270,6 +273,7 @@ export default function ProjectDashboardPage() {
         updatedPrompt = `${asset.prompt_image}\n\n[FEEDBACK: ${feedback}]`;
       }
 
+      // 1. Reset asset to pending
       const res = await fetch(`/api/assets/${assetId}/regenerate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -291,6 +295,17 @@ export default function ProjectDashboardPage() {
           delete next[assetId];
           return next;
         });
+
+        // 2. Immediately dispatch image generation with selected provider
+        try {
+          await fetch("/api/dispatch/images", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ assetId, provider }),
+          });
+        } catch {
+          /* dispatch will be retried manually if it fails */
+        }
       }
     } catch {
       /* ignore */
@@ -302,7 +317,8 @@ export default function ProjectDashboardPage() {
     setActionLoading(assetId);
     try {
       const asset = assets.find((a) => a.id === assetId);
-      const feedback = asset?.review_notes?.trim();
+      const feedback = rejectNotes[assetId]?.trim() || asset?.review_notes?.trim();
+      const provider = regenVideoProvider[assetId] ?? videoProvider;
 
       // If there's feedback, append it to prompt_video before retrying
       if (feedback && asset?.prompt_video) {
@@ -320,7 +336,7 @@ export default function ProjectDashboardPage() {
       const res = await fetch("/api/dispatch/videos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ assetIds: [assetId], provider: videoProvider }),
+        body: JSON.stringify({ assetId, provider }),
       });
       if (res.ok) {
         setAssets((prev) =>
@@ -939,40 +955,107 @@ export default function ProjectDashboardPage() {
                         Nota: {asset.review_notes}
                       </p>
                     )}
+                    {/* Feedback input */}
+                    {showRejectInput === asset.id && (
+                      <input
+                        type="text"
+                        placeholder="Feedback para ajuste..."
+                        value={rejectNotes[asset.id] ?? ""}
+                        onChange={(e) =>
+                          setRejectNotes((prev) => ({ ...prev, [asset.id]: e.target.value }))
+                        }
+                        className="w-full rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:border-purple-600 focus:outline-none"
+                      />
+                    )}
                     {/* If image exists, offer to retry video; otherwise regenerate image */}
                     {asset.image_url ? (
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleRetryVideo(asset.id)}
-                          disabled={actionLoading === asset.id}
-                          className="flex-1 rounded-lg border border-blue-700/50 bg-blue-900/20 px-3 py-1.5 text-xs font-medium text-blue-400 transition-colors hover:bg-blue-900/40 disabled:opacity-50"
-                        >
-                          {actionLoading === asset.id ? (
-                            <div className="mx-auto h-3.5 w-3.5 animate-spin rounded-full border-2 border-blue-400/30 border-t-blue-400" />
-                          ) : (
-                            "Regenerar Video"
-                          )}
-                        </button>
-                        <button
-                          onClick={() => handleRegenerate(asset.id)}
-                          disabled={actionLoading === asset.id}
-                          className="rounded-lg border border-slate-700/50 bg-slate-800/50 px-3 py-1.5 text-xs font-medium text-slate-400 transition-colors hover:bg-slate-700/50 disabled:opacity-50"
-                        >
-                          Nova Imagem
-                        </button>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-1.5">
+                          <select
+                            value={regenVideoProvider[asset.id] ?? videoProvider}
+                            onChange={(e) => setRegenVideoProvider((prev) => ({ ...prev, [asset.id]: e.target.value }))}
+                            className="flex-1 rounded-lg border border-slate-700 bg-slate-800 px-2 py-1.5 text-[10px] text-white outline-none"
+                          >
+                            <option value="runway">Runway</option>
+                            <option value="higgsfield">Higgsfield</option>
+                            <option value="google">Google</option>
+                          </select>
+                          <button
+                            onClick={() => {
+                              if (showRejectInput !== asset.id) {
+                                setShowRejectInput(asset.id);
+                              } else {
+                                handleRetryVideo(asset.id);
+                              }
+                            }}
+                            disabled={actionLoading === asset.id}
+                            className="flex-1 rounded-lg border border-blue-700/50 bg-blue-900/20 px-2 py-1.5 text-[10px] font-medium text-blue-400 transition-colors hover:bg-blue-900/40 disabled:opacity-50"
+                          >
+                            {actionLoading === asset.id ? (
+                              <div className="mx-auto h-3 w-3 animate-spin rounded-full border-2 border-blue-400/30 border-t-blue-400" />
+                            ) : showRejectInput === asset.id ? (
+                              "Enviar Video"
+                            ) : (
+                              "Regenerar Video"
+                            )}
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <select
+                            value={regenImageProvider[asset.id] ?? imageProvider}
+                            onChange={(e) => setRegenImageProvider((prev) => ({ ...prev, [asset.id]: e.target.value }))}
+                            className="flex-1 rounded-lg border border-slate-700 bg-slate-800 px-2 py-1.5 text-[10px] text-white outline-none"
+                          >
+                            <option value="higgsfield">Higgsfield</option>
+                            <option value="google">Google</option>
+                            <option value="runway">Runway</option>
+                          </select>
+                          <button
+                            onClick={() => {
+                              if (showRejectInput !== asset.id) {
+                                setShowRejectInput(asset.id);
+                              } else {
+                                handleRegenerate(asset.id);
+                              }
+                            }}
+                            disabled={actionLoading === asset.id}
+                            className="flex-1 rounded-lg border border-slate-700/50 bg-slate-800/50 px-2 py-1.5 text-[10px] font-medium text-slate-400 transition-colors hover:bg-slate-700/50 disabled:opacity-50"
+                          >
+                            {showRejectInput === asset.id ? "Enviar Imagem" : "Nova Imagem"}
+                          </button>
+                        </div>
                       </div>
                     ) : (
-                      <button
-                        onClick={() => handleRegenerate(asset.id)}
-                        disabled={actionLoading === asset.id}
-                        className="w-full rounded-lg border border-amber-700/50 bg-amber-900/20 px-3 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-900/40 disabled:opacity-50"
-                      >
-                        {actionLoading === asset.id ? (
-                          <div className="mx-auto h-3.5 w-3.5 animate-spin rounded-full border-2 border-amber-400/30 border-t-amber-400" />
-                        ) : (
-                          "Regenerar Imagem"
-                        )}
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <select
+                          value={regenImageProvider[asset.id] ?? imageProvider}
+                          onChange={(e) => setRegenImageProvider((prev) => ({ ...prev, [asset.id]: e.target.value }))}
+                          className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1.5 text-[10px] text-white outline-none"
+                        >
+                          <option value="higgsfield">Higgsfield</option>
+                          <option value="google">Google</option>
+                          <option value="runway">Runway</option>
+                        </select>
+                        <button
+                          onClick={() => {
+                            if (showRejectInput !== asset.id) {
+                              setShowRejectInput(asset.id);
+                            } else {
+                              handleRegenerate(asset.id);
+                            }
+                          }}
+                          disabled={actionLoading === asset.id}
+                          className="flex-1 rounded-lg border border-amber-700/50 bg-amber-900/20 px-3 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-900/40 disabled:opacity-50"
+                        >
+                          {actionLoading === asset.id ? (
+                            <div className="mx-auto h-3.5 w-3.5 animate-spin rounded-full border-2 border-amber-400/30 border-t-amber-400" />
+                          ) : showRejectInput === asset.id ? (
+                            "Enviar"
+                          ) : (
+                            "Regenerar Imagem"
+                          )}
+                        </button>
+                      </div>
                     )}
                   </div>
                 )}
@@ -989,7 +1072,7 @@ export default function ProjectDashboardPage() {
                 {asset.status === "approved" && (
                   <div className="mt-3 space-y-2">
                     {showRejectInput === asset.id ? (
-                      <div className="flex gap-1.5">
+                      <div className="space-y-1.5">
                         <input
                           type="text"
                           placeholder="Descreva o ajuste desejado..."
@@ -1000,24 +1083,35 @@ export default function ProjectDashboardPage() {
                               [asset.id]: e.target.value,
                             }))
                           }
-                          className="flex-1 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:border-purple-600 focus:outline-none"
+                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:border-purple-600 focus:outline-none"
                         />
-                        <button
-                          onClick={() => handleRegenerate(asset.id)}
-                          disabled={
-                            actionLoading === asset.id ||
-                            (rejectNotes[asset.id]?.trim().length ?? 0) < 5
-                          }
-                          className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-500 disabled:opacity-50"
-                        >
-                          Enviar
-                        </button>
-                        <button
-                          onClick={() => setShowRejectInput(null)}
-                          className="rounded-lg border border-slate-700 px-2 py-1.5 text-xs text-slate-400 hover:bg-slate-800"
-                        >
-                          ✕
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                          <select
+                            value={regenImageProvider[asset.id] ?? imageProvider}
+                            onChange={(e) => setRegenImageProvider((prev) => ({ ...prev, [asset.id]: e.target.value }))}
+                            className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1.5 text-[10px] text-white outline-none"
+                          >
+                            <option value="higgsfield">Higgsfield</option>
+                            <option value="google">Google</option>
+                            <option value="runway">Runway</option>
+                          </select>
+                          <button
+                            onClick={() => handleRegenerate(asset.id)}
+                            disabled={
+                              actionLoading === asset.id ||
+                              (rejectNotes[asset.id]?.trim().length ?? 0) < 5
+                            }
+                            className="flex-1 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-500 disabled:opacity-50"
+                          >
+                            Enviar
+                          </button>
+                          <button
+                            onClick={() => setShowRejectInput(null)}
+                            className="rounded-lg border border-slate-700 px-2 py-1.5 text-xs text-slate-400 hover:bg-slate-800"
+                          >
+                            ✕
+                          </button>
+                        </div>
                       </div>
                     ) : (
                       <button
