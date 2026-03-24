@@ -12,7 +12,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { generateImage } from "@/lib/higgsfield";
-import { generateImageGoogle } from "@/lib/google-ai";
+import { generateImageGoogle, generateImageImagen4, IMAGEN4_MODELS } from "@/lib/google-ai";
 import { generateImageRunway } from "@/lib/runway";
 import type {
   AssetRow,
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     } = body as {
       assetId?: string;
       assetIds?: string[];
-      provider?: "higgsfield" | "google" | "runway";
+      provider?: "higgsfield" | "google" | "runway" | "imagen4";
       model?: string;
     };
 
@@ -108,12 +108,16 @@ export async function POST(request: NextRequest) {
     const toolKey = asset.image_tool as string | null;
     const mapping = toolKey ? IMAGE_TOOL_MAP[toolKey] : null;
 
-    let provider: "higgsfield" | "google" | "runway";
+    let provider: "higgsfield" | "google" | "runway" | "imagen4";
     let model: string;
 
     if (overrideProvider) {
       provider = overrideProvider;
-      model = overrideModel ?? (provider === "runway" ? "gen4_image_turbo" : mapping?.model ?? "nano-banana-pro");
+      model = overrideModel ?? (
+        provider === "runway" ? "gen4_image_turbo" :
+        provider === "imagen4" ? "imagen-4" :
+        mapping?.model ?? "nano-banana-pro"
+      );
     } else if (mapping) {
       provider = mapping.provider;
       model = overrideModel ?? mapping.model;
@@ -186,7 +190,13 @@ export async function POST(request: NextRequest) {
     try {
       let imageUrl: string;
 
-      if (provider === "runway") {
+      if (provider === "imagen4") {
+        const result = await generateImageImagen4(
+          asset.prompt_image!,
+          model,
+        );
+        imageUrl = result.url;
+      } else if (provider === "runway") {
         const result = await generateImageRunway(
           asset.prompt_image!,
           model,

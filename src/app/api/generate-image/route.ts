@@ -6,7 +6,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { generateImage } from "@/lib/higgsfield";
-import { generateImageGoogle } from "@/lib/google-ai";
+import { generateImageGoogle, generateImageImagen4 } from "@/lib/google-ai";
 import { generateImageRunway } from "@/lib/runway";
 
 export async function POST(request: NextRequest) {
@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { prompt, provider, model } = body as {
       prompt: string;
-      provider?: "higgsfield" | "google" | "runway";
+      provider?: "higgsfield" | "google" | "runway" | "imagen4";
       model?: string;
     };
 
@@ -28,7 +28,10 @@ export async function POST(request: NextRequest) {
     const useProvider = provider ?? "higgsfield";
     let imageUrl: string;
 
-    if (useProvider === "runway") {
+    if (useProvider === "imagen4") {
+      const result = await generateImageImagen4(prompt.trim(), model ?? "imagen-4");
+      imageUrl = result.url;
+    } else if (useProvider === "runway") {
       const result = await generateImageRunway(prompt.trim(), model ?? "gen4_image_turbo");
       imageUrl = result.url;
     } else if (useProvider === "google") {

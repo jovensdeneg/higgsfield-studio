@@ -1,5 +1,5 @@
 /**
- * Cliente para Google AI APIs (Nano Banana + Veo).
+ * Cliente para Google AI APIs (Nano Banana + Imagen 4 + Veo).
  *
  * Usa a mesma GOOGLE_AI_KEY do improve-prompt.
  * Imagens geradas (base64) são salvas no Vercel Blob para obter URLs.
@@ -8,6 +8,11 @@
  * - Nano Banana Pro (gemini-3-pro-image-preview) — máxima qualidade, 4K
  * - Nano Banana 2 (gemini-3.1-flash-image-preview) — rápido, qualidade Pro
  * - Nano Banana (gemini-2.5-flash-image) — original, mais rápido
+ *
+ * Modelos de imagem (Imagen 4):
+ * - Imagen 4 Ultra (imagen-4.0-ultra-generate-001) — máxima qualidade
+ * - Imagen 4 (imagen-4.0-generate-001) — balanceado
+ * - Imagen 4 Fast (imagen-4.0-fast-generate-001) — rápido
  */
 
 import { put } from "@vercel/blob";
@@ -23,6 +28,12 @@ export const GOOGLE_IMAGE_MODELS: Record<string, string> = {
   "nano-banana-pro": "gemini-3-pro-image-preview",
   "nano-banana-2": "gemini-3.1-flash-image-preview",
   "nano-banana": "gemini-2.5-flash-image",
+};
+
+export const IMAGEN4_MODELS: Record<string, string> = {
+  "imagen-4-ultra": "imagen-4.0-ultra-generate-001",
+  "imagen-4": "imagen-4.0-generate-001",
+  "imagen-4-fast": "imagen-4.0-fast-generate-001",
 };
 
 // Fallback: se o modelo preferido falhar, tenta os outros
@@ -207,6 +218,82 @@ export async function generateImageGoogle(
     `Último erro: ${lastError.slice(0, 200)}. ` +
     `Modelos tentados: ${modelsToTry.join(", ")}`
   );
+}
+
+// ---------------------------------------------------------------------------
+// Image generation (Imagen 4 via :predict)
+// ---------------------------------------------------------------------------
+
+/**
+ * Gera imagem com Imagen 4 via endpoint :predict.
+ * Usa a mesma GOOGLE_AI_KEY.
+ * Não suporta reference images (text-to-image puro).
+ */
+export async function generateImageImagen4(
+  prompt: string,
+  model: string = "imagen-4",
+): Promise<HFImageResult> {
+  const apiKey = getApiKey();
+  const modelId = IMAGEN4_MODELS[model] ?? IMAGEN4_MODELS["imagen-4"];
+
+  const url = `${GEMINI_BASE}/models/${modelId}:predict`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": apiKey,
+    },
+    body: JSON.stringify({
+      instances: [{ prompt }],
+      parameters: {
+        aspectRatio: "16:9",
+        sampleCount: 1,
+      },
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "(sem detalhes)");
+    const hint =
+      res.status === 400
+        ? " Verifique se o prompt é válido."
+        : res.status === 403
+          ? " Verifique se a GOOGLE_AI_KEY tem permissão para Imagen 4."
+          : res.status === 404
+            ? ` Modelo ${modelId} pode não estar disponível para sua API key.`
+            : res.status === 429
+              ? " Limite de taxa atingido. Tente novamente em alguns minutos."
+              : "";
+    throw new Error(
+      `Imagen 4 erro (${res.status}): ${errText.slice(0, 500)}${hint}`
+    );
+  }
+
+  const data = await res.json();
+  const predictions = data.predictions as Array<Record<string, unknown>> | undefined;
+
+  if (!predictions || predictions.length === 0) {
+    throw new Error("Imagen 4: nenhuma imagem gerada na resposta");
+  }
+
+  const base64Data = predictions[0].bytesBase64Encoded as string | undefined;
+  const mimeType = (predictions[0].mimeType as string) ?? "image/png";
+
+  if (!base64Data) {
+    throw new Error("Imagen 4: resposta sem dados de imagem");
+  }
+
+  // Upload to Vercel Blob
+  const buffer = Buffer.from(base64Data, "base64");
+  const filename = `imagen4/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+
+  const blob = await put(filename, buffer, {
+    access: "public",
+    contentType: mimeType,
+  });
+
+  return { url: blob.url, raw: { ...data, model: modelId } };
 }
 
 // ---------------------------------------------------------------------------

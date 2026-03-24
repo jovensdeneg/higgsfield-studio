@@ -5,6 +5,15 @@ import ImprovePromptButton from "@/components/ImprovePromptButton";
 
 const PROVIDERS = [
   {
+    value: "imagen4",
+    label: "Imagen 4",
+    models: [
+      { value: "imagen-4-ultra", label: "Imagen 4 Ultra" },
+      { value: "imagen-4", label: "Imagen 4 Standard" },
+      { value: "imagen-4-fast", label: "Imagen 4 Fast" },
+    ],
+  },
+  {
     value: "higgsfield",
     label: "Higgsfield",
     models: [
@@ -39,8 +48,8 @@ interface GeneratedImage {
 
 export default function GenerateImagePage() {
   const [prompt, setPrompt] = useState("");
-  const [provider, setProvider] = useState("higgsfield");
-  const [model, setModel] = useState("nano-banana-pro");
+  const [provider, setProvider] = useState("imagen4");
+  const [model, setModel] = useState("imagen-4-ultra");
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<GeneratedImage[]>([]);

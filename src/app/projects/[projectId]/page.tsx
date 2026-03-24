@@ -118,7 +118,7 @@ export default function ProjectDashboardPage() {
   const [dispatchResult, setDispatchResult] = useState<string | null>(null);
   const [rejectNotes, setRejectNotes] = useState<Record<string, string>>({});
   const [showRejectInput, setShowRejectInput] = useState<string | null>(null);
-  const [imageProvider, setImageProvider] = useState<string>("higgsfield");
+  const [imageProvider, setImageProvider] = useState<string>("imagen4");
   const [videoProvider, setVideoProvider] = useState<string>("runway");
   // Per-asset provider overrides for regeneration
   const [regenImageProvider, setRegenImageProvider] = useState<Record<string, string>>({});
@@ -584,6 +584,7 @@ export default function ProjectDashboardPage() {
             className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-white outline-none transition-colors hover:border-slate-600 focus:border-purple-500"
             disabled={dispatching !== null}
           >
+            <option value="imagen4">Imagen 4</option>
             <option value="higgsfield">Higgsfield</option>
             <option value="google">Google AI</option>
             <option value="runway">Runway</option>
