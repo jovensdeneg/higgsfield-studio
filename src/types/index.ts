@@ -65,7 +65,7 @@ export interface CharacterRow {
   updated_at: string;
 }
 
-/** A single production asset (image, video, or motion graphic). */
+/** A single production asset (scene with dual images + video). */
 export interface AssetRow {
   id: string;
   project_id: string;
@@ -73,17 +73,26 @@ export interface AssetRow {
   asset_code: string;
   scene: string;
   description: string;
+  scenedescription: string | null;
   asset_type: AssetType;
   image_tool: GenerationTool | null;
   video_tool: GenerationTool | null;
-  prompt_image: string | null;
+  // Dual image prompts (frame inicial + frame final)
+  prompt_image: string | null;   // legacy — maps to prompt_image1
+  prompt_image1: string | null;  // frame inicial
+  prompt_image2: string | null;  // frame final
   prompt_video: string | null;
   parameters: Record<string, unknown>;
   status: AssetStatus;
-  image_url: string | null;
+  // Dual image URLs
+  image_url: string | null;      // legacy — maps to image1_url
+  image1_url: string | null;     // frame inicial
+  image2_url: string | null;     // frame final
   video_url: string | null;
   thumbnail_url: string | null;
   review_notes: string | null;
+  error_message: string | null;
+  depends_on: string | null;     // asset_code of parent scene for visual continuity
   sort_order: number;
   created_at: string;
   updated_at: string;
@@ -129,12 +138,16 @@ export interface AssetInsert {
   asset_code: string;
   scene: string;
   description: string;
+  scenedescription?: string | null;
   asset_type: AssetType;
   image_tool: GenerationTool | null;
   video_tool: GenerationTool | null;
-  prompt_image: string | null;
+  prompt_image?: string | null;   // legacy
+  prompt_image1?: string | null;  // frame inicial
+  prompt_image2?: string | null;  // frame final
   prompt_video: string | null;
   parameters: Record<string, unknown>;
+  depends_on?: string | null;
   status?: AssetStatus;
   sort_order: number;
 }
@@ -155,14 +168,20 @@ export interface GenerationJobInsert {
 /** Raw row as it comes from the CSV file (all strings). */
 export interface CsvRow {
   asset_code: string;
-  scene: string;
-  description: string;
-  asset_type: string;
-  image_tool: string;
-  video_tool: string;
-  prompt_image: string;
-  prompt_video: string;
-  duration: string;
+  // New format
+  scenedescription?: string;
+  prompt_image1?: string;
+  prompt_image2?: string;
+  depends_on?: string;
+  // Legacy format (backwards compat)
+  scene?: string;
+  description?: string;
+  asset_type?: string;
+  image_tool?: string;
+  video_tool?: string;
+  prompt_image?: string;
+  prompt_video?: string;
+  duration?: string;
   notes?: string;
 }
 

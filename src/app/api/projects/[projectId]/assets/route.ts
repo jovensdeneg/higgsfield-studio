@@ -112,10 +112,15 @@ export async function PATCH(request: NextRequest, ctx: RouteContext) {
       "status",
       "review_notes",
       "image_url",
+      "image1_url",
+      "image2_url",
       "video_url",
       "thumbnail_url",
       "prompt_image",
+      "prompt_image1",
+      "prompt_image2",
       "prompt_video",
+      "error_message",
     ]);
 
     const sanitized: Record<string, unknown> = {};

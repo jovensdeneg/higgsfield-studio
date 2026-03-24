@@ -10,18 +10,24 @@ interface Asset {
   asset_code: string;
   scene: string;
   description: string;
+  scenedescription: string | null;
   asset_type: string;
   image_tool: string;
   video_tool: string;
   prompt_image: string;
+  prompt_image1: string | null;
+  prompt_image2: string | null;
   prompt_video: string;
   duration: number | null;
   notes: string;
   status: string;
   image_url: string | null;
+  image1_url: string | null;
+  image2_url: string | null;
   video_url: string | null;
   error_message: string | null;
   review_notes: string | null;
+  depends_on: string | null;
 }
 
 interface Project {
@@ -357,51 +363,97 @@ export default function ProjectDashboardPage() {
     // Prevent double-clicks
     if (isDispatchingRef.current) return;
 
-    const pendingIds = assets
-      .filter((a) => a.status === "pending" && a.prompt_image)
-      .map((a) => a.id);
-    if (pendingIds.length === 0) {
+    // Find assets that need image generation:
+    // - "pending" with prompt_image1 or prompt_image → needs image1
+    // - "generating" with image1_url/image_url but no image2_url and has prompt_image2 → needs image2
+    const pendingAssets = assets.filter((a) => {
+      if (a.status === "pending" && (a.prompt_image1 || a.prompt_image)) return true;
+      if (a.status === "generating" && (a.image1_url || a.image_url) && !a.image2_url && a.prompt_image2) return true;
+      return false;
+    });
+
+    if (pendingAssets.length === 0) {
       setDispatchResult("Nenhum asset pendente com prompt de imagem.");
       return;
     }
 
-    // Store queue in ref so re-renders can't interrupt it
-    dispatchQueueRef.current = [...pendingIds];
     isDispatchingRef.current = true;
     setDispatching("images");
     setDispatchResult(null);
 
-    const total = pendingIds.length;
-    const provider = imageProvider; // capture at start
+    const provider = imageProvider;
     let completed = 0;
     let failed = 0;
     let skipped = 0;
+    const total = pendingAssets.length;
 
-    // Process one at a time to avoid Vercel timeout
+    // Process one scene at a time: image1 → image2 (sequential per scene)
     for (let i = 0; i < total; i++) {
-      const assetId = dispatchQueueRef.current[i];
-      if (!assetId) break;
+      const asset = pendingAssets[i];
+      if (!asset) break;
 
-      setDispatchResult(
-        `Gerando imagem ${i + 1}/${total}... (${completed} ok, ${failed} falhas)`
-      );
-      try {
-        const res = await fetch("/api/dispatch/images", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ assetId, provider }),
-        });
-        const data = await res.json();
-        if (data.status === "completed") completed++;
-        else if (data.status === "failed") failed++;
-        else if (data.status === "skipped") skipped++;
-      } catch {
-        failed++;
+      // Determine which image to generate
+      const needsImage1 = asset.status === "pending";
+      const needsImage2 = !needsImage1 && !!asset.prompt_image2 && !asset.image2_url;
+
+      if (needsImage1) {
+        // Generate image1 (frame inicial)
+        setDispatchResult(
+          `Cena ${i + 1}/${total} — gerando frame inicial... (${completed} ok, ${failed} falhas)`
+        );
+        try {
+          const res = await fetch("/api/dispatch/images", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ assetId: asset.id, provider, imageNumber: 1 }),
+          });
+          const data = await res.json();
+          if (data.status === "failed") { failed++; continue; }
+          if (data.status === "skipped") { skipped++; continue; }
+
+          // If image1 succeeded and there's a prompt_image2, generate image2 immediately
+          if (data.status === "completed" && data.needsImage2) {
+            setDispatchResult(
+              `Cena ${i + 1}/${total} — gerando frame final... (${completed} ok, ${failed} falhas)`
+            );
+            const res2 = await fetch("/api/dispatch/images", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ assetId: asset.id, provider, imageNumber: 2 }),
+            });
+            const data2 = await res2.json();
+            if (data2.status === "completed") completed++;
+            else if (data2.status === "failed") failed++;
+            else if (data2.status === "skipped") skipped++;
+          } else {
+            completed++;
+          }
+        } catch {
+          failed++;
+        }
+      } else if (needsImage2) {
+        // Generate image2 only (image1 already exists)
+        setDispatchResult(
+          `Cena ${i + 1}/${total} — gerando frame final... (${completed} ok, ${failed} falhas)`
+        );
+        try {
+          const res = await fetch("/api/dispatch/images", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ assetId: asset.id, provider, imageNumber: 2 }),
+          });
+          const data = await res.json();
+          if (data.status === "completed") completed++;
+          else if (data.status === "failed") failed++;
+          else if (data.status === "skipped") skipped++;
+        } catch {
+          failed++;
+        }
       }
     }
 
     setDispatchResult(
-      `Imagens: ${completed} geradas, ${failed} falhas, ${skipped} ignoradas`
+      `Cenas: ${completed} completas, ${failed} falhas, ${skipped} ignoradas`
     );
     setDispatching(null);
     isDispatchingRef.current = false;
@@ -818,59 +870,108 @@ export default function ProjectDashboardPage() {
               key={asset.id}
               className="group overflow-hidden rounded-xl border border-slate-800 bg-slate-900 transition-all hover:border-slate-700"
             >
-              {/* Thumbnail / Video */}
-              <div className="relative aspect-video w-full overflow-hidden bg-slate-800">
-                {asset.video_url ? (
-                  <video
-                    src={asset.video_url}
-                    poster={asset.image_url ?? undefined}
-                    controls
-                    className="h-full w-full object-cover"
-                  />
-                ) : asset.image_url ? (
-                  <img
-                    src={asset.image_url}
-                    alt={asset.asset_code}
-                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center">
-                    <svg
-                      className="h-8 w-8 text-slate-700"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      strokeWidth={1.5}
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z"
-                      />
-                    </svg>
+              {/* Dual Image Display (Frame Inicial + Frame Final) */}
+              {(() => {
+                const img1 = asset.image1_url ?? asset.image_url;
+                const img2 = asset.image2_url;
+                const hasDualImages = !!img1 && !!img2;
+                const hasAnyImage = !!img1 || !!img2;
+
+                return (
+                  <div className="relative w-full overflow-hidden bg-slate-800">
+                    {asset.video_url ? (
+                      <div className="aspect-video">
+                        <video
+                          src={asset.video_url}
+                          poster={img1 ?? undefined}
+                          controls
+                          className="h-full w-full object-cover"
+                        />
+                      </div>
+                    ) : hasDualImages ? (
+                      /* Side-by-side dual images */
+                      <div className="flex">
+                        <div className="relative w-1/2 border-r border-slate-700/50">
+                          <div className="aspect-video overflow-hidden">
+                            <img src={img1!} alt={`${asset.asset_code} - Frame Inicial`} className="h-full w-full object-cover" />
+                          </div>
+                          <span className="absolute bottom-1 left-1 rounded bg-slate-900/80 px-1.5 py-0.5 text-[9px] font-medium text-slate-300 backdrop-blur-sm">
+                            Inicial
+                          </span>
+                        </div>
+                        <div className="relative w-1/2">
+                          <div className="aspect-video overflow-hidden">
+                            <img src={img2!} alt={`${asset.asset_code} - Frame Final`} className="h-full w-full object-cover" />
+                          </div>
+                          <span className="absolute bottom-1 left-1 rounded bg-slate-900/80 px-1.5 py-0.5 text-[9px] font-medium text-slate-300 backdrop-blur-sm">
+                            Final
+                          </span>
+                        </div>
+                      </div>
+                    ) : img1 ? (
+                      /* Single image (image1 only, image2 pending) */
+                      <div className="flex">
+                        <div className="relative w-1/2 border-r border-slate-700/50">
+                          <div className="aspect-video overflow-hidden">
+                            <img src={img1} alt={`${asset.asset_code} - Frame Inicial`} className="h-full w-full object-cover" />
+                          </div>
+                          <span className="absolute bottom-1 left-1 rounded bg-slate-900/80 px-1.5 py-0.5 text-[9px] font-medium text-slate-300 backdrop-blur-sm">
+                            Inicial
+                          </span>
+                        </div>
+                        <div className="flex w-1/2 items-center justify-center">
+                          <div className="text-center">
+                            <svg className="mx-auto h-6 w-6 text-slate-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z" />
+                            </svg>
+                            <p className="mt-1 text-[9px] text-slate-500">Frame Final</p>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      /* No images yet */
+                      <div className="flex aspect-video items-center justify-center">
+                        <svg className="h-8 w-8 text-slate-700" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z" />
+                        </svg>
+                      </div>
+                    )}
+                    {/* Status overlay */}
+                    <div className="absolute right-2 top-2 z-10">
+                      <AssetStatusBadge status={asset.status} />
+                    </div>
+                    {/* Dependency badge */}
+                    {asset.depends_on && (
+                      <div className="absolute left-2 top-2 z-10 rounded bg-purple-900/80 px-1.5 py-0.5 text-[9px] font-medium text-purple-300 backdrop-blur-sm">
+                        Dep: {asset.depends_on}
+                      </div>
+                    )}
+                    {/* Download buttons */}
+                    {hasAnyImage && (
+                      <div className="absolute bottom-2 right-2 z-10 flex gap-1 opacity-0 transition-all group-hover:opacity-100">
+                        {img1 && (
+                          <a href={img1} download target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
+                            className="flex h-7 items-center gap-1 rounded-full bg-slate-900/80 px-2 text-[9px] text-white backdrop-blur-sm hover:bg-purple-600" title="Baixar Frame Inicial">
+                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                            </svg>
+                            1
+                          </a>
+                        )}
+                        {img2 && (
+                          <a href={img2} download target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
+                            className="flex h-7 items-center gap-1 rounded-full bg-slate-900/80 px-2 text-[9px] text-white backdrop-blur-sm hover:bg-purple-600" title="Baixar Frame Final">
+                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                            </svg>
+                            2
+                          </a>
+                        )}
+                      </div>
+                    )}
                   </div>
-                )}
-                {/* Status overlay */}
-                <div className="absolute right-2 top-2">
-                  <AssetStatusBadge status={asset.status} />
-                </div>
-                {/* Download button */}
-                {(asset.image_url || asset.video_url) && (
-                  <a
-                    href={asset.video_url ?? asset.image_url!}
-                    download
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="absolute bottom-2 right-2 flex h-8 w-8 items-center justify-center rounded-full bg-slate-900/80 text-white opacity-0 backdrop-blur-sm transition-all hover:bg-purple-600 group-hover:opacity-100"
-                    title="Baixar"
-                  >
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                    </svg>
-                  </a>
-                )}
-              </div>
+                );
+              })()}
 
               {/* Content */}
               <div className="p-4">
@@ -879,12 +980,16 @@ export default function ProjectDashboardPage() {
                     {asset.asset_code}
                   </h3>
                 </div>
-                <p className="mb-2 text-[11px] font-medium text-purple-400/80">
-                  {asset.scene}
-                </p>
-                <p className="line-clamp-2 text-xs leading-relaxed text-slate-400">
-                  {asset.description || "Sem descricao"}
-                </p>
+                {asset.scenedescription && (
+                  <p className="mb-1 line-clamp-2 text-xs leading-relaxed text-slate-400">
+                    {asset.scenedescription}
+                  </p>
+                )}
+                {!asset.scenedescription && asset.description && (
+                  <p className="mb-1 line-clamp-2 text-xs leading-relaxed text-slate-400">
+                    {asset.description}
+                  </p>
+                )}
 
                 {/* Actions for "ready" assets */}
                 {asset.status === "ready" && (
