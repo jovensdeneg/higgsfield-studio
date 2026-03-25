@@ -18,6 +18,7 @@ interface Asset {
   prompt_image1: string | null;
   prompt_image2: string | null;
   prompt_video: string;
+  parameters: Record<string, unknown> | null;
   duration: number | null;
   notes: string;
   status: string;
@@ -123,12 +124,14 @@ export default function ProjectDashboardPage() {
   );
   const [dispatchResult, setDispatchResult] = useState<string | null>(null);
   const [rejectNotes, setRejectNotes] = useState<Record<string, string>>({});
-  const [showRejectInput, setShowRejectInput] = useState<string | null>(null);
+  const [showRejectInput, setShowRejectInput] = useState<string | null>(null); // "assetId-1" or "assetId-2"
   const [imageProvider, setImageProvider] = useState<string>("imagen4");
   const [videoProvider, setVideoProvider] = useState<string>("runway");
   // Per-asset provider overrides for regeneration
   const [regenImageProvider, setRegenImageProvider] = useState<Record<string, string>>({});
   const [regenVideoProvider, setRegenVideoProvider] = useState<Record<string, string>>({});
+  // Carry-reference toggles: when regenerating image X, optionally send the other image as reference
+  const [carryReference, setCarryReference] = useState<Record<string, boolean>>({});
   const dispatchQueueRef = useRef<string[]>([]);
   const isDispatchingRef = useRef(false);
 
@@ -273,13 +276,11 @@ export default function ProjectDashboardPage() {
       const feedback = rejectNotes[assetId]?.trim() || asset?.review_notes?.trim();
       const provider = regenImageProvider[assetId] ?? imageProvider;
 
-      // Build updated prompt: append feedback to original prompt
       let updatedPrompt: string | undefined;
       if (feedback && asset?.prompt_image) {
         updatedPrompt = `${asset.prompt_image}\n\n[FEEDBACK: ${feedback}]`;
       }
 
-      // 1. Reset asset to pending
       const res = await fetch(`/api/assets/${assetId}/regenerate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -296,26 +297,96 @@ export default function ProjectDashboardPage() {
           )
         );
         setShowRejectInput(null);
-        setRejectNotes((prev) => {
-          const next = { ...prev };
-          delete next[assetId];
-          return next;
-        });
+        setRejectNotes((prev) => { const next = { ...prev }; delete next[assetId]; return next; });
 
-        // 2. Immediately dispatch image generation with selected provider
         try {
           await fetch("/api/dispatch/images", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ assetId, provider }),
           });
-        } catch {
-          /* dispatch will be retried manually if it fails */
-        }
+        } catch { /* retry manually */ }
       }
-    } catch {
-      /* ignore */
-    }
+    } catch { /* ignore */ }
+    setActionLoading(null);
+  }
+
+  /** Regenerate a specific image (1 or 2) for a scene */
+  async function handleRegenerateImage(assetId: string, imageNumber: 1 | 2) {
+    const rejectKey = `${assetId}-${imageNumber}`;
+    setActionLoading(assetId);
+    try {
+      const asset = assets.find((a) => a.id === assetId);
+      const feedback = rejectNotes[rejectKey]?.trim();
+      const provider = regenImageProvider[rejectKey] ?? imageProvider;
+      const shouldCarryRef = carryReference[rejectKey] ?? false;
+
+      if (!feedback || feedback.length < 3) { setActionLoading(null); return; }
+
+      // Build the new prompt: feedback replaces the original prompt for this image
+      const promptField = imageNumber === 1 ? "prompt_image1" : "prompt_image2";
+      const originalPrompt = imageNumber === 1
+        ? (asset?.prompt_image1 ?? asset?.prompt_image ?? "")
+        : (asset?.prompt_image2 ?? "");
+      const newPrompt = `${originalPrompt}\n\n[FEEDBACK: ${feedback}]`;
+
+      // Update the prompt in the DB
+      await fetch(`/api/projects/${projectId}/assets`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          asset_ids: [assetId],
+          updates: { [promptField]: newPrompt },
+        }),
+      });
+
+      // Clear the corresponding image URL so it gets regenerated
+      const clearField = imageNumber === 1 ? "image1_url" : "image2_url";
+      await fetch(`/api/projects/${projectId}/assets`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          asset_ids: [assetId],
+          updates: { [clearField]: null, status: "generating" },
+        }),
+      });
+
+      setAssets((prev) =>
+        prev.map((a) =>
+          a.id === assetId
+            ? { ...a, status: "generating", [clearField]: null, [promptField]: newPrompt, error_message: null }
+            : a
+        )
+      );
+      setShowRejectInput(null);
+      setRejectNotes((prev) => { const next = { ...prev }; delete next[rejectKey]; return next; });
+      setCarryReference((prev) => { const next = { ...prev }; delete next[rejectKey]; return next; });
+
+      // Dispatch the specific image
+      // If carryRef is on, the other image will be picked up by the dispatch API
+      // since it reads image1_url/image2_url from the DB
+      await fetch("/api/dispatch/images", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assetId, provider, imageNumber }),
+      });
+    } catch { /* ignore */ }
+    setActionLoading(null);
+  }
+
+  /** Undo scene approval → back to "ready" for adjustments */
+  async function handleUndoApprove(assetId: string) {
+    setActionLoading(assetId);
+    try {
+      await fetch(`/api/projects/${projectId}/assets`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ asset_ids: [assetId], updates: { status: "ready" } }),
+      });
+      setAssets((prev) =>
+        prev.map((a) => (a.id === assetId ? { ...a, status: "ready" } : a))
+      );
+    } catch { /* ignore */ }
     setActionLoading(null);
   }
 
@@ -856,7 +927,7 @@ export default function ProjectDashboardPage() {
         )}
       </div>
 
-      {/* Assets Grid */}
+      {/* Scene Cards — full width, one per row */}
       {filtered.length === 0 ? (
         <div className="rounded-xl border border-slate-800 bg-slate-900 p-12 text-center">
           <p className="text-sm text-slate-400">
@@ -864,376 +935,285 @@ export default function ProjectDashboardPage() {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {filtered.map((asset) => (
-            <div
-              key={asset.id}
-              className="group overflow-hidden rounded-xl border border-slate-800 bg-slate-900 transition-all hover:border-slate-700"
-            >
-              {/* Dual Image Display (Frame Inicial + Frame Final) */}
-              {(() => {
-                const img1 = asset.image1_url ?? asset.image_url;
-                const img2 = asset.image2_url;
-                const hasDualImages = !!img1 && !!img2;
-                const hasAnyImage = !!img1 || !!img2;
+        <div className="space-y-4">
+          {filtered.map((asset) => {
+            const img1 = asset.image1_url ?? asset.image_url;
+            const img2 = asset.image2_url;
+            const isApproved = asset.status === "approved";
+            const isReady = asset.status === "ready";
+            const isFailed = asset.status === "failed" || asset.status === "rejected";
+            const isGenerating = asset.status === "generating";
+            const params = (asset.parameters ?? {}) as Record<string, string>;
 
-                return (
-                  <div className="relative w-full overflow-hidden bg-slate-800">
-                    {asset.video_url ? (
-                      <div className="aspect-video">
-                        <video
-                          src={asset.video_url}
-                          poster={img1 ?? undefined}
-                          controls
-                          className="h-full w-full object-cover"
-                        />
-                      </div>
-                    ) : hasDualImages ? (
-                      /* Side-by-side dual images */
-                      <div className="flex">
-                        <div className="relative w-1/2 border-r border-slate-700/50">
-                          <div className="aspect-video overflow-hidden">
-                            <img src={img1!} alt={`${asset.asset_code} - Frame Inicial`} className="h-full w-full object-cover" />
-                          </div>
-                          <span className="absolute bottom-1 left-1 rounded bg-slate-900/80 px-1.5 py-0.5 text-[9px] font-medium text-slate-300 backdrop-blur-sm">
-                            Inicial
-                          </span>
-                        </div>
-                        <div className="relative w-1/2">
-                          <div className="aspect-video overflow-hidden">
-                            <img src={img2!} alt={`${asset.asset_code} - Frame Final`} className="h-full w-full object-cover" />
-                          </div>
-                          <span className="absolute bottom-1 left-1 rounded bg-slate-900/80 px-1.5 py-0.5 text-[9px] font-medium text-slate-300 backdrop-blur-sm">
-                            Final
-                          </span>
-                        </div>
-                      </div>
-                    ) : img1 ? (
-                      /* Single image (image1 only, image2 pending) */
-                      <div className="flex">
-                        <div className="relative w-1/2 border-r border-slate-700/50">
-                          <div className="aspect-video overflow-hidden">
-                            <img src={img1} alt={`${asset.asset_code} - Frame Inicial`} className="h-full w-full object-cover" />
-                          </div>
-                          <span className="absolute bottom-1 left-1 rounded bg-slate-900/80 px-1.5 py-0.5 text-[9px] font-medium text-slate-300 backdrop-blur-sm">
-                            Inicial
-                          </span>
-                        </div>
-                        <div className="flex w-1/2 items-center justify-center">
+            const DownloadBtn = ({ url, label }: { url: string; label: string }) => (
+              <a href={url} download target="_blank" rel="noopener noreferrer"
+                className="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-slate-900/80 text-white backdrop-blur-sm transition-all hover:bg-purple-600"
+                title={`Baixar ${label}`}>
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                </svg>
+              </a>
+            );
+
+            /** Inline reject panel for a specific image */
+            const RejectPanel = ({ imgNum }: { imgNum: 1 | 2 }) => {
+              const key = `${asset.id}-${imgNum}`;
+              const otherImgNum = imgNum === 1 ? 2 : 1;
+              const otherImg = imgNum === 1 ? img2 : img1;
+              if (showRejectInput !== key) return null;
+              return (
+                <div className="mt-2 space-y-2 rounded-lg border border-slate-700 bg-slate-800/50 p-3">
+                  <textarea
+                    placeholder={`Novo prompt / ajuste para imagem ${imgNum}...`}
+                    value={rejectNotes[key] ?? ""}
+                    onChange={(e) => setRejectNotes((prev) => ({ ...prev, [key]: e.target.value }))}
+                    rows={2}
+                    className="w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none"
+                  />
+                  {otherImg && (
+                    <label className="flex items-center gap-2 text-xs text-slate-300">
+                      <input
+                        type="checkbox"
+                        checked={carryReference[key] ?? false}
+                        onChange={(e) => setCarryReference((prev) => ({ ...prev, [key]: e.target.checked }))}
+                        className="rounded border-slate-600 bg-slate-800"
+                      />
+                      Levar imagem {otherImgNum} como referencia
+                    </label>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={regenImageProvider[key] ?? imageProvider}
+                      onChange={(e) => setRegenImageProvider((prev) => ({ ...prev, [key]: e.target.value }))}
+                      className="rounded-lg border border-slate-600 bg-slate-900 px-2 py-1.5 text-xs text-white outline-none"
+                    >
+                      <option value="imagen4">Imagen 4</option>
+                      <option value="google">Google AI</option>
+                      <option value="higgsfield">Higgsfield</option>
+                      <option value="runway">Runway</option>
+                    </select>
+                    <button
+                      onClick={() => handleRegenerateImage(asset.id, imgNum)}
+                      disabled={actionLoading === asset.id || (rejectNotes[key]?.trim().length ?? 0) < 3}
+                      className="flex-1 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-amber-500 disabled:opacity-50"
+                    >
+                      {actionLoading === asset.id ? (
+                        <div className="mx-auto h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                      ) : (
+                        `Regenerar Imagem ${imgNum}`
+                      )}
+                    </button>
+                    <button onClick={() => setShowRejectInput(null)}
+                      className="rounded-lg border border-slate-600 px-2 py-1.5 text-xs text-slate-400 hover:bg-slate-700">
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              );
+            };
+
+            return (
+              <div
+                key={asset.id}
+                className={`overflow-hidden rounded-xl border transition-all ${
+                  isApproved
+                    ? "border-green-700/50 bg-green-950/30"
+                    : "border-slate-800 bg-slate-900 hover:border-slate-700"
+                }`}
+              >
+                <div className="flex flex-col lg:flex-row">
+                  {/* Left: Dual images side by side */}
+                  <div className="flex min-h-[200px] flex-1 lg:min-h-[280px]">
+                    {/* Image 1 */}
+                    <div className="relative w-1/2 border-r border-slate-700/50 bg-slate-800">
+                      {img1 ? (
+                        <>
+                          <img src={img1} alt={`${asset.asset_code} - Frame Inicial`} className="h-full w-full object-cover" />
+                          <DownloadBtn url={img1} label="Frame Inicial" />
+                        </>
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center">
                           <div className="text-center">
-                            <svg className="mx-auto h-6 w-6 text-slate-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                            <svg className="mx-auto h-8 w-8 text-slate-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z" />
                             </svg>
-                            <p className="mt-1 text-[9px] text-slate-500">Frame Final</p>
+                            <p className="mt-1 text-[10px] text-slate-500">Frame Inicial</p>
                           </div>
                         </div>
-                      </div>
-                    ) : (
-                      /* No images yet */
-                      <div className="flex aspect-video items-center justify-center">
-                        <svg className="h-8 w-8 text-slate-700" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z" />
-                        </svg>
-                      </div>
-                    )}
-                    {/* Status overlay */}
-                    <div className="absolute right-2 top-2 z-10">
-                      <AssetStatusBadge status={asset.status} />
+                      )}
+                      <span className="absolute bottom-2 left-2 rounded bg-slate-900/80 px-2 py-0.5 text-[10px] font-semibold text-slate-200 backdrop-blur-sm">
+                        Imagem 1 — Inicial
+                      </span>
                     </div>
-                    {/* Dependency badge */}
-                    {asset.depends_on && (
-                      <div className="absolute left-2 top-2 z-10 rounded bg-purple-900/80 px-1.5 py-0.5 text-[9px] font-medium text-purple-300 backdrop-blur-sm">
-                        Dep: {asset.depends_on}
-                      </div>
-                    )}
-                    {/* Download buttons */}
-                    {hasAnyImage && (
-                      <div className="absolute bottom-2 right-2 z-10 flex gap-1 opacity-0 transition-all group-hover:opacity-100">
-                        {img1 && (
-                          <a href={img1} download target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
-                            className="flex h-7 items-center gap-1 rounded-full bg-slate-900/80 px-2 text-[9px] text-white backdrop-blur-sm hover:bg-purple-600" title="Baixar Frame Inicial">
-                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                            </svg>
-                            1
-                          </a>
-                        )}
-                        {img2 && (
-                          <a href={img2} download target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
-                            className="flex h-7 items-center gap-1 rounded-full bg-slate-900/80 px-2 text-[9px] text-white backdrop-blur-sm hover:bg-purple-600" title="Baixar Frame Final">
-                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                            </svg>
-                            2
-                          </a>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
 
-              {/* Content */}
-              <div className="p-4">
-                <div className="mb-1 flex items-center justify-between gap-2">
-                  <h3 className="truncate text-sm font-bold text-white">
-                    {asset.asset_code}
-                  </h3>
-                </div>
-                {asset.scenedescription && (
-                  <p className="mb-1 line-clamp-2 text-xs leading-relaxed text-slate-400">
-                    {asset.scenedescription}
-                  </p>
-                )}
-                {!asset.scenedescription && asset.description && (
-                  <p className="mb-1 line-clamp-2 text-xs leading-relaxed text-slate-400">
-                    {asset.description}
-                  </p>
-                )}
-
-                {/* Actions for "ready" assets */}
-                {asset.status === "ready" && (
-                  <div className="mt-3 space-y-2">
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleApprove(asset.id)}
-                        disabled={actionLoading === asset.id}
-                        className="flex-1 rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-purple-500 disabled:opacity-50"
-                      >
-                        {actionLoading === asset.id ? (
-                          <div className="mx-auto h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                        ) : (
-                          "Aprovar"
-                        )}
-                      </button>
-                      <button
-                        onClick={() =>
-                          setShowRejectInput(
-                            showRejectInput === asset.id ? null : asset.id
-                          )
-                        }
-                        disabled={actionLoading === asset.id}
-                        className="flex-1 rounded-lg border border-red-700/50 bg-red-900/20 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-900/40 disabled:opacity-50"
-                      >
-                        Rejeitar
-                      </button>
-                    </div>
-                    {/* Reject: feedback + provider selector + regenerate options */}
-                    {showRejectInput === asset.id && (
-                      <div className="space-y-1.5">
-                        <input
-                          type="text"
-                          placeholder="Descreva o ajuste desejado..."
-                          value={rejectNotes[asset.id] ?? ""}
-                          onChange={(e) =>
-                            setRejectNotes((prev) => ({
-                              ...prev,
-                              [asset.id]: e.target.value,
-                            }))
-                          }
-                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:border-purple-600 focus:outline-none"
-                        />
-                        {/* Regenerar Video option — only if video already exists */}
-                        {asset.video_url && (
-                          <div className="flex items-center gap-1.5">
-                            <select
-                              value={regenVideoProvider[asset.id] ?? videoProvider}
-                              onChange={(e) => setRegenVideoProvider((prev) => ({ ...prev, [asset.id]: e.target.value }))}
-                              className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1.5 text-[10px] text-white outline-none"
-                            >
-                              <option value="runway">Runway</option>
-                              <option value="higgsfield">Higgsfield</option>
-                              <option value="google">Google</option>
-                            </select>
-                            <button
-                              onClick={() => handleRetryVideo(asset.id)}
-                              disabled={
-                                actionLoading === asset.id ||
-                                (rejectNotes[asset.id]?.trim().length ?? 0) < 3
-                              }
-                              className="flex-1 rounded-lg border border-blue-700/50 bg-blue-900/20 px-2 py-1.5 text-[10px] font-medium text-blue-400 transition-colors hover:bg-blue-900/40 disabled:opacity-50"
-                            >
-                              {actionLoading === asset.id ? (
-                                <div className="mx-auto h-3 w-3 animate-spin rounded-full border-2 border-blue-400/30 border-t-blue-400" />
-                              ) : (
-                                "Regenerar Video"
-                              )}
-                            </button>
+                    {/* Image 2 */}
+                    <div className="relative w-1/2 bg-slate-800">
+                      {img2 ? (
+                        <>
+                          <img src={img2} alt={`${asset.asset_code} - Frame Final`} className="h-full w-full object-cover" />
+                          <DownloadBtn url={img2} label="Frame Final" />
+                        </>
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center">
+                          <div className="text-center">
+                            <svg className="mx-auto h-8 w-8 text-slate-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z" />
+                            </svg>
+                            <p className="mt-1 text-[10px] text-slate-500">Frame Final</p>
                           </div>
+                        </div>
+                      )}
+                      <span className="absolute bottom-2 left-2 rounded bg-slate-900/80 px-2 py-0.5 text-[10px] font-semibold text-slate-200 backdrop-blur-sm">
+                        Imagem 2 — Final
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Right: Info + Actions */}
+                  <div className="flex w-full flex-col justify-between p-5 lg:w-[380px]">
+                    {/* Header */}
+                    <div>
+                      <div className="mb-2 flex items-center justify-between">
+                        <h3 className="text-lg font-bold text-white">{asset.asset_code}</h3>
+                        <AssetStatusBadge status={asset.status} />
+                      </div>
+
+                      {/* Scene info from CSV */}
+                      <div className="mb-3 space-y-1.5">
+                        {(asset.scenedescription || asset.description) && (
+                          <p className="text-xs leading-relaxed text-slate-300">
+                            {asset.scenedescription ?? asset.description}
+                          </p>
                         )}
-                        {/* Regenerar Imagem option — always available */}
-                        <div className="flex items-center gap-1.5">
-                          <select
-                            value={regenImageProvider[asset.id] ?? imageProvider}
-                            onChange={(e) => setRegenImageProvider((prev) => ({ ...prev, [asset.id]: e.target.value }))}
-                            className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1.5 text-[10px] text-white outline-none"
-                          >
-                            <option value="higgsfield">Higgsfield</option>
-                            <option value="google">Google</option>
-                            <option value="runway">Runway</option>
-                          </select>
+                        {asset.depends_on && (
+                          <p className="text-[11px] text-purple-400">
+                            Depende de: <span className="font-semibold">{asset.depends_on}</span>
+                          </p>
+                        )}
+                      </div>
+
+                      {/* CSV metadata */}
+                      <div className="mb-3 grid grid-cols-2 gap-x-3 gap-y-1 rounded-lg bg-slate-800/60 p-2.5 text-[10px]">
+                        {asset.scene && asset.scene !== asset.asset_code && (
+                          <><span className="text-slate-500">Cena</span><span className="text-slate-300">{asset.scene}</span></>
+                        )}
+                        {asset.asset_type && (
+                          <><span className="text-slate-500">Tipo</span><span className="text-slate-300">{asset.asset_type}</span></>
+                        )}
+                        {params.duration && (
+                          <><span className="text-slate-500">Duracao</span><span className="text-slate-300">{String(params.duration)}s</span></>
+                        )}
+                        {asset.image_tool && (
+                          <><span className="text-slate-500">Tool Img</span><span className="text-slate-300">{asset.image_tool}</span></>
+                        )}
+                        {asset.video_tool && (
+                          <><span className="text-slate-500">Tool Video</span><span className="text-slate-300">{asset.video_tool}</span></>
+                        )}
+                        {asset.prompt_video && (
+                          <><span className="text-slate-500">Prompt Video</span><span className="truncate text-slate-300" title={asset.prompt_video}>{asset.prompt_video.slice(0, 60)}...</span></>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="space-y-2">
+                      {/* Error message */}
+                      {asset.error_message && (
+                        <p className="rounded bg-red-900/30 px-2 py-1 text-[10px] text-red-400">
+                          {asset.error_message}
+                        </p>
+                      )}
+
+                      {/* Generating */}
+                      {isGenerating && (
+                        <div className="flex items-center gap-2 text-sm text-blue-400">
+                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-400/30 border-t-blue-400" />
+                          Gerando imagens...
+                        </div>
+                      )}
+
+                      {/* Ready: Approve + Reject per image */}
+                      {isReady && (
+                        <>
                           <button
-                            onClick={() => handleRegenerate(asset.id)}
-                            disabled={
-                              actionLoading === asset.id ||
-                              (rejectNotes[asset.id]?.trim().length ?? 0) < 3
-                            }
-                            className="flex-1 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-500 disabled:opacity-50"
+                            onClick={() => handleApprove(asset.id)}
+                            disabled={actionLoading === asset.id}
+                            className="w-full rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-green-500 disabled:opacity-50"
                           >
                             {actionLoading === asset.id ? (
-                              <div className="mx-auto h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                              <div className="mx-auto h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
                             ) : (
-                              "Regenerar Imagem"
+                              "Aprovar Cena"
                             )}
                           </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setShowRejectInput(showRejectInput === `${asset.id}-1` ? null : `${asset.id}-1`)}
+                              disabled={actionLoading === asset.id}
+                              className="flex-1 rounded-lg border border-red-700/50 bg-red-900/20 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-900/40 disabled:opacity-50"
+                            >
+                              Rejeitar Imagem 1
+                            </button>
+                            <button
+                              onClick={() => setShowRejectInput(showRejectInput === `${asset.id}-2` ? null : `${asset.id}-2`)}
+                              disabled={actionLoading === asset.id}
+                              className="flex-1 rounded-lg border border-red-700/50 bg-red-900/20 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-900/40 disabled:opacity-50"
+                            >
+                              Rejeitar Imagem 2
+                            </button>
+                          </div>
+                          <RejectPanel imgNum={1} />
+                          <RejectPanel imgNum={2} />
+                        </>
+                      )}
 
-                {/* Regenerate for failed/rejected assets */}
-                {(asset.status === "failed" ||
-                  asset.status === "rejected") && (
-                  <div className="mt-3 space-y-2">
-                    {asset.error_message && (
-                      <p className="mb-2 text-[10px] text-red-400/80">
-                        {asset.error_message}
-                      </p>
-                    )}
-                    {asset.status === "rejected" && asset.review_notes && (
-                      <p className="mb-2 text-[10px] text-red-400/80">
-                        Nota: {asset.review_notes}
-                      </p>
-                    )}
-                    {/* Feedback input (always visible for regeneration) */}
-                    <input
-                      type="text"
-                      placeholder="Feedback opcional para ajuste..."
-                      value={rejectNotes[asset.id] ?? ""}
-                      onChange={(e) =>
-                        setRejectNotes((prev) => ({ ...prev, [asset.id]: e.target.value }))
-                      }
-                      className="w-full rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:border-purple-600 focus:outline-none"
-                    />
-                    {/* Show "Regenerar Video" ONLY if video was generated at least once */}
-                    {asset.video_url && (
-                      <div className="flex items-center gap-1.5">
-                        <select
-                          value={regenVideoProvider[asset.id] ?? videoProvider}
-                          onChange={(e) => setRegenVideoProvider((prev) => ({ ...prev, [asset.id]: e.target.value }))}
-                          className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1.5 text-[10px] text-white outline-none"
-                        >
-                          <option value="runway">Runway</option>
-                          <option value="higgsfield">Higgsfield</option>
-                          <option value="google">Google</option>
-                        </select>
+                      {/* Approved: green bg + Voltar button */}
+                      {isApproved && (
                         <button
-                          onClick={() => handleRetryVideo(asset.id)}
+                          onClick={() => handleUndoApprove(asset.id)}
                           disabled={actionLoading === asset.id}
-                          className="flex-1 rounded-lg border border-blue-700/50 bg-blue-900/20 px-2 py-1.5 text-[10px] font-medium text-blue-400 transition-colors hover:bg-blue-900/40 disabled:opacity-50"
+                          className="w-full rounded-lg border border-slate-600 bg-slate-800/60 px-3 py-2 text-xs font-medium text-slate-300 transition-colors hover:bg-slate-700 disabled:opacity-50"
                         >
                           {actionLoading === asset.id ? (
-                            <div className="mx-auto h-3 w-3 animate-spin rounded-full border-2 border-blue-400/30 border-t-blue-400" />
+                            <div className="mx-auto h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
                           ) : (
-                            "Regenerar Video"
+                            "Voltar para ajuste"
                           )}
                         </button>
-                      </div>
-                    )}
-                    {/* Regenerate image */}
-                    <div className="flex items-center gap-1.5">
-                      <select
-                        value={regenImageProvider[asset.id] ?? imageProvider}
-                        onChange={(e) => setRegenImageProvider((prev) => ({ ...prev, [asset.id]: e.target.value }))}
-                        className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1.5 text-[10px] text-white outline-none"
-                      >
-                        <option value="higgsfield">Higgsfield</option>
-                        <option value="google">Google</option>
-                        <option value="runway">Runway</option>
-                      </select>
-                      <button
-                        onClick={() => handleRegenerate(asset.id)}
-                        disabled={actionLoading === asset.id}
-                        className="flex-1 rounded-lg border border-amber-700/50 bg-amber-900/20 px-3 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-900/40 disabled:opacity-50"
-                      >
-                        {actionLoading === asset.id ? (
-                          <div className="mx-auto h-3.5 w-3.5 animate-spin rounded-full border-2 border-amber-400/30 border-t-amber-400" />
-                        ) : (
-                          "Regenerar Imagem"
-                        )}
-                      </button>
+                      )}
+
+                      {/* Failed / Rejected */}
+                      {isFailed && (
+                        <>
+                          {asset.review_notes && (
+                            <p className="rounded bg-red-900/30 px-2 py-1 text-[10px] text-red-400">
+                              Nota: {asset.review_notes}
+                            </p>
+                          )}
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setShowRejectInput(showRejectInput === `${asset.id}-1` ? null : `${asset.id}-1`)}
+                              className="flex-1 rounded-lg border border-amber-700/50 bg-amber-900/20 px-3 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-900/40"
+                            >
+                              Regenerar Imagem 1
+                            </button>
+                            <button
+                              onClick={() => setShowRejectInput(showRejectInput === `${asset.id}-2` ? null : `${asset.id}-2`)}
+                              className="flex-1 rounded-lg border border-amber-700/50 bg-amber-900/20 px-3 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-900/40"
+                            >
+                              Regenerar Imagem 2
+                            </button>
+                          </div>
+                          <RejectPanel imgNum={1} />
+                          <RejectPanel imgNum={2} />
+                        </>
+                      )}
                     </div>
                   </div>
-                )}
-
-                {/* Generating indicator */}
-                {asset.status === "generating" && (
-                  <div className="mt-3 flex items-center gap-2 text-xs text-blue-400">
-                    <div className="h-3 w-3 animate-spin rounded-full border-2 border-blue-400/30 border-t-blue-400" />
-                    Gerando...
-                  </div>
-                )}
-
-                {/* Undo option for approved assets */}
-                {asset.status === "approved" && (
-                  <div className="mt-3 space-y-2">
-                    {showRejectInput === asset.id ? (
-                      <div className="space-y-1.5">
-                        <input
-                          type="text"
-                          placeholder="Descreva o ajuste desejado..."
-                          value={rejectNotes[asset.id] ?? ""}
-                          onChange={(e) =>
-                            setRejectNotes((prev) => ({
-                              ...prev,
-                              [asset.id]: e.target.value,
-                            }))
-                          }
-                          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:border-purple-600 focus:outline-none"
-                        />
-                        <div className="flex items-center gap-1.5">
-                          <select
-                            value={regenImageProvider[asset.id] ?? imageProvider}
-                            onChange={(e) => setRegenImageProvider((prev) => ({ ...prev, [asset.id]: e.target.value }))}
-                            className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1.5 text-[10px] text-white outline-none"
-                          >
-                            <option value="higgsfield">Higgsfield</option>
-                            <option value="google">Google</option>
-                            <option value="runway">Runway</option>
-                          </select>
-                          <button
-                            onClick={() => handleRegenerate(asset.id)}
-                            disabled={
-                              actionLoading === asset.id ||
-                              (rejectNotes[asset.id]?.trim().length ?? 0) < 5
-                            }
-                            className="flex-1 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-500 disabled:opacity-50"
-                          >
-                            Enviar
-                          </button>
-                          <button
-                            onClick={() => setShowRejectInput(null)}
-                            className="rounded-lg border border-slate-700 px-2 py-1.5 text-xs text-slate-400 hover:bg-slate-800"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => setShowRejectInput(asset.id)}
-                        disabled={actionLoading === asset.id}
-                        className="w-full rounded-lg border border-amber-700/50 bg-amber-900/20 px-3 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-900/40 disabled:opacity-50"
-                      >
-                        Ajustar Imagem
-                      </button>
-                    )}
-                  </div>
-                )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
