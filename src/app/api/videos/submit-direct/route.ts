@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { submitVideo } from "@/lib/higgsfield";
 import { submitVideoGoogle } from "@/lib/google-ai";
 import { createScene, getNextSceneId } from "@/lib/store";
+import { createServerClient } from "@/lib/supabase/server";
 
 /**
  * POST /api/videos/submit-direct
@@ -113,6 +114,50 @@ export async function POST(request: NextRequest) {
       created_at: now,
       updated_at: now,
     });
+
+    // Also save to Supabase assets table for gallery
+    try {
+      const supabase = createServerClient();
+
+      // Ensure a "Video Direto" project exists
+      const VD_NAME = "Video Direto";
+      let projectId: string;
+      const { data: existingProj } = await supabase
+        .from("projects")
+        .select("id")
+        .eq("name", VD_NAME)
+        .limit(1)
+        .single();
+
+      if (existingProj) {
+        projectId = (existingProj as { id: string }).id;
+      } else {
+        const { data: created } = await supabase
+          .from("projects")
+          .insert({ name: VD_NAME })
+          .select("id")
+          .single();
+        projectId = (created as { id: string }).id;
+      }
+
+      const code = `VID-${Date.now().toString(36).toUpperCase()}`;
+      await supabase.from("assets").insert({
+        project_id: projectId,
+        asset_code: code,
+        scene: sceneId,
+        description: movement_prompt.trim().slice(0, 200),
+        asset_type: "image_to_video",
+        image_url: start_image_url,
+        image1_url: start_image_url,
+        image2_url: end_image_url ?? null,
+        prompt_video: movement_prompt.trim(),
+        video_tool: isGoogle ? "google_veo" : "higgsfield_kling",
+        status: "generating",
+        sort_order: 0,
+      });
+    } catch {
+      console.error("[submit-direct] Failed to save to gallery");
+    }
 
     return NextResponse.json(
       {

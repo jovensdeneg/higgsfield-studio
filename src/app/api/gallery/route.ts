@@ -18,6 +18,8 @@ export interface GalleryItem {
   scene?: string;
   description: string;
   image_url: string | null;
+  image1_url?: string | null;
+  image2_url?: string | null;
   video_url: string | null;
   image_tool?: string;
   video_tool?: string;
@@ -36,7 +38,7 @@ export async function GET(request: NextRequest) {
     // Build query based on type filter
     let query = supabase
       .from("assets")
-      .select("id, project_id, asset_code, scene, description, image_url, video_url, image_tool, video_tool, created_at")
+      .select("id, project_id, asset_code, scene, description, image_url, image1_url, image2_url, video_url, image_tool, video_tool, created_at")
       .order("created_at", { ascending: false });
 
     if (type === "images") {
@@ -65,7 +67,8 @@ export async function GET(request: NextRequest) {
       for (const asset of assets) {
         const a = asset as {
           id: string; project_id: string; asset_code: string; scene: string;
-          description: string; image_url: string | null; video_url: string | null;
+          description: string; image_url: string | null; image1_url: string | null;
+          image2_url: string | null; video_url: string | null;
           image_tool: string; video_tool: string; created_at: string;
         };
 
@@ -80,7 +83,9 @@ export async function GET(request: NextRequest) {
           asset_code: a.asset_code,
           scene: a.scene,
           description: a.description,
-          image_url: a.image_url,
+          image_url: a.image_url ?? a.image1_url,
+          image1_url: a.image1_url,
+          image2_url: a.image2_url,
           video_url: a.video_url,
           image_tool: a.image_tool,
           video_tool: a.video_tool,

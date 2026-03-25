@@ -103,9 +103,9 @@ const STATUS_CONFIG: Record<
   },
   approved: {
     label: "Aprovado",
-    bg: "bg-purple-500/15",
-    text: "text-purple-400",
-    ring: "ring-purple-500/30",
+    bg: "bg-green-500/15",
+    text: "text-green-400",
+    ring: "ring-green-500/30",
   },
   rejected: {
     label: "Rejeitado",
@@ -164,6 +164,9 @@ export default function ProjectDashboardPage() {
   const [regenVideoProvider, setRegenVideoProvider] = useState<Record<string, string>>({});
   // Carry-reference toggles: when regenerating image X, optionally send the other image as reference
   const [carryReference, setCarryReference] = useState<Record<string, boolean>>({});
+  // Uploaded reference images for regeneration (key = "assetId-imgNum")
+  const [regenRefImages, setRegenRefImages] = useState<Record<string, { url: string; name: string }>>({});
+  const [uploadingRef, setUploadingRef] = useState<string | null>(null);
   // Lightbox
   const [lightboxSrc, setLightboxSrc] = useState<{ src: string; alt: string } | null>(null);
   // Scene selector for batch image generation
@@ -399,13 +402,24 @@ export default function ProjectDashboardPage() {
       setRejectNotes((prev) => { const next = { ...prev }; delete next[rejectKey]; return next; });
       setCarryReference((prev) => { const next = { ...prev }; delete next[rejectKey]; return next; });
 
+      // Build extra reference images array
+      const extraReferenceImages: string[] = [];
+      const uploadedRef = regenRefImages[rejectKey];
+      if (uploadedRef) extraReferenceImages.push(uploadedRef.url);
+      setRegenRefImages((prev) => { const next = { ...prev }; delete next[rejectKey]; return next; });
+
       // Dispatch the specific image
       // If carryRef is on, the other image will be picked up by the dispatch API
       // since it reads image1_url/image2_url from the DB
       await fetch("/api/dispatch/images", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ assetId, provider, imageNumber }),
+        body: JSON.stringify({
+          assetId,
+          provider,
+          imageNumber,
+          ...(extraReferenceImages.length > 0 && { extraReferenceImages }),
+        }),
       });
     } catch { /* ignore */ }
     setActionLoading(null);
@@ -880,8 +894,8 @@ export default function ProjectDashboardPage() {
           {readyCount} prontos
         </span>
         <span className="text-slate-700">|</span>
-        <span className="flex items-center gap-1.5 text-xs font-medium text-purple-400">
-          <span className="h-2 w-2 rounded-full bg-purple-400" />
+        <span className="flex items-center gap-1.5 text-xs font-medium text-green-400">
+          <span className="h-2 w-2 rounded-full bg-green-400" />
           {approvedCount} aprovados
         </span>
         {rejectedCount > 0 && (
@@ -1052,6 +1066,26 @@ export default function ProjectDashboardPage() {
               const otherImgNum = imgNum === 1 ? 2 : 1;
               const otherImg = imgNum === 1 ? img2 : img1;
               if (showRejectInput !== key) return null;
+
+              const uploadedRef = regenRefImages[key];
+
+              async function handleUploadRef(e: React.ChangeEvent<HTMLInputElement>) {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                setUploadingRef(key);
+                try {
+                  const formData = new FormData();
+                  formData.append("file", file);
+                  const res = await fetch("/api/upload", { method: "POST", body: formData });
+                  if (res.ok) {
+                    const { url } = await res.json();
+                    setRegenRefImages((prev) => ({ ...prev, [key]: { url, name: file.name } }));
+                  }
+                } catch { /* ignore */ }
+                setUploadingRef(null);
+                e.target.value = "";
+              }
+
               return (
                 <div className="mt-2 space-y-2 rounded-lg border border-slate-700 bg-slate-800/50 p-3">
                   <textarea
@@ -1061,16 +1095,50 @@ export default function ProjectDashboardPage() {
                     rows={2}
                     className="w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none"
                   />
-                  {otherImg && (
-                    <label className="flex items-center gap-2 text-xs text-slate-300">
-                      <input
-                        type="checkbox"
-                        checked={carryReference[key] ?? false}
-                        onChange={(e) => setCarryReference((prev) => ({ ...prev, [key]: e.target.checked }))}
-                        className="rounded border-slate-600 bg-slate-800"
-                      />
-                      Levar imagem {otherImgNum} como referencia
+                  <div className="flex flex-wrap items-center gap-3">
+                    {otherImg && (
+                      <label className="flex items-center gap-2 text-xs text-slate-300">
+                        <input
+                          type="checkbox"
+                          checked={carryReference[key] ?? false}
+                          onChange={(e) => setCarryReference((prev) => ({ ...prev, [key]: e.target.checked }))}
+                          className="rounded border-slate-600 bg-slate-800"
+                        />
+                        Levar imagem {otherImgNum} como referencia
+                      </label>
+                    )}
+                    {/* Reference image upload */}
+                    <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-slate-600 px-2.5 py-1.5 text-xs text-slate-300 transition-colors hover:border-purple-500 hover:text-purple-300">
+                      {uploadingRef === key ? (
+                        <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-500 border-t-white" />
+                      ) : (
+                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
+                        </svg>
+                      )}
+                      {uploadedRef ? uploadedRef.name : "Imagem de referencia"}
+                      <input type="file" accept="image/*" className="hidden" onChange={handleUploadRef} />
                     </label>
+                    {uploadedRef && (
+                      <button
+                        onClick={() => setRegenRefImages((prev) => { const next = { ...prev }; delete next[key]; return next; })}
+                        className="text-xs text-red-400 hover:text-red-300"
+                        title="Remover referencia"
+                      >
+                        &times;
+                      </button>
+                    )}
+                  </div>
+                  {uploadedRef && (
+                    <div className="flex items-center gap-2">
+                      <img
+                        src={uploadedRef.url}
+                        alt="Referencia"
+                        className="h-12 w-12 rounded border border-slate-600 object-cover cursor-pointer"
+                        onClick={() => setLightboxSrc({ src: uploadedRef.url, alt: "Referencia" })}
+                      />
+                      <span className="text-[10px] text-slate-500">Sera enviada como referencia visual</span>
+                    </div>
                   )}
                   <div className="flex items-center gap-2">
                     <select

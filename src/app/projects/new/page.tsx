@@ -5,7 +5,17 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Papa from "papaparse";
 
-const EXPECTED_COLUMNS = [
+const NEW_FORMAT_COLUMNS = [
+  "asset_code",
+  "scenedescription",
+  "prompt_image1",
+  "prompt_image2",
+  "prompt_video",
+  "duration",
+  "depends_on",
+];
+
+const LEGACY_COLUMNS = [
   "asset_code",
   "scene",
   "description",
@@ -19,16 +29,20 @@ const EXPECTED_COLUMNS = [
 
 interface CsvRow {
   asset_code: string;
-  scene: string;
-  description: string;
-  asset_type: string;
-  image_tool: string;
-  video_tool: string;
-  prompt_image: string;
-  prompt_video: string;
-  duration: string;
-  notes: string;
-  [key: string]: string;
+  scenedescription?: string;
+  prompt_image1?: string;
+  prompt_image2?: string;
+  depends_on?: string;
+  scene?: string;
+  description?: string;
+  asset_type?: string;
+  image_tool?: string;
+  video_tool?: string;
+  prompt_image?: string;
+  prompt_video?: string;
+  duration?: string;
+  notes?: string;
+  [key: string]: string | undefined;
 }
 
 export default function NewProjectPage() {
@@ -43,6 +57,7 @@ export default function NewProjectPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
+  const [isNewFormat, setIsNewFormat] = useState(false);
 
   const validateAndParse = useCallback((file: File) => {
     setCsvFile(file);
@@ -60,12 +75,17 @@ export default function NewProjectPage() {
     Papa.parse<CsvRow>(file, {
       header: true,
       skipEmptyLines: true,
+      transformHeader: (h: string) => h.trim().toLowerCase().replace(/\s+/g, "_"),
       complete(results) {
         const errors: string[] = [];
 
-        // Check columns
-        const headers = results.meta.fields ?? [];
-        const missing = EXPECTED_COLUMNS.filter(
+        // Detect format based on headers
+        const headers = results.meta.fields?.map((f) => f.toLowerCase()) ?? [];
+        const isNew = headers.includes("prompt_image1");
+
+        // Check columns based on detected format
+        const expectedCols = isNew ? NEW_FORMAT_COLUMNS : LEGACY_COLUMNS;
+        const missing = expectedCols.filter(
           (col) => !headers.includes(col)
         );
         if (missing.length > 0) {
@@ -82,7 +102,8 @@ export default function NewProjectPage() {
           if (!row.asset_code?.trim()) {
             errors.push(`Linha ${i + 2}: asset_code vazio`);
           }
-          if (!row.scene?.trim()) {
+          // Legacy format requires scene
+          if (!isNew && !row.scene?.trim()) {
             errors.push(`Linha ${i + 2}: scene vazio`);
           }
         });
@@ -97,9 +118,10 @@ export default function NewProjectPage() {
         setParseErrors(errors);
         if (errors.length === 0) {
           setParsedRows(rows);
+          setIsNewFormat(isNew);
         }
       },
-      error(err) {
+      error(err: { message: string }) {
         setParseErrors([`Erro ao ler CSV: ${err.message}`]);
       },
     });
@@ -274,6 +296,7 @@ export default function NewProjectPage() {
                     setCsvRawText("");
                     setParsedRows([]);
                     setParseErrors([]);
+                    setIsNewFormat(false);
                     if (fileInputRef.current) fileInputRef.current.value = "";
                   }}
                   className="mt-1 text-xs text-slate-500 underline hover:text-slate-300"
@@ -302,7 +325,7 @@ export default function NewProjectPage() {
                   Arraste o CSV aqui ou clique para selecionar
                 </p>
                 <p className="text-xs text-slate-500">
-                  Formato: asset_code, scene, description, asset_type, ...
+                  Formato: asset_code; scenedescription; prompt_image1; prompt_image2; prompt_video; duration; depends_on
                 </p>
               </div>
             )}
@@ -339,18 +362,37 @@ export default function NewProjectPage() {
                       <th className="whitespace-nowrap px-4 py-3 font-medium text-slate-400">
                         Asset Code
                       </th>
-                      <th className="whitespace-nowrap px-4 py-3 font-medium text-slate-400">
-                        Cena
-                      </th>
-                      <th className="whitespace-nowrap px-4 py-3 font-medium text-slate-400">
-                        Tipo
-                      </th>
-                      <th className="whitespace-nowrap px-4 py-3 font-medium text-slate-400">
-                        Descricao
-                      </th>
-                      <th className="whitespace-nowrap px-4 py-3 font-medium text-slate-400">
-                        Duracao
-                      </th>
+                      {isNewFormat ? (
+                        <>
+                          <th className="whitespace-nowrap px-4 py-3 font-medium text-slate-400">
+                            Descricao da Cena
+                          </th>
+                          <th className="whitespace-nowrap px-4 py-3 font-medium text-slate-400">
+                            Prompt Img 1
+                          </th>
+                          <th className="whitespace-nowrap px-4 py-3 font-medium text-slate-400">
+                            Prompt Img 2
+                          </th>
+                          <th className="whitespace-nowrap px-4 py-3 font-medium text-slate-400">
+                            Depends On
+                          </th>
+                        </>
+                      ) : (
+                        <>
+                          <th className="whitespace-nowrap px-4 py-3 font-medium text-slate-400">
+                            Cena
+                          </th>
+                          <th className="whitespace-nowrap px-4 py-3 font-medium text-slate-400">
+                            Tipo
+                          </th>
+                          <th className="whitespace-nowrap px-4 py-3 font-medium text-slate-400">
+                            Descricao
+                          </th>
+                          <th className="whitespace-nowrap px-4 py-3 font-medium text-slate-400">
+                            Duracao
+                          </th>
+                        </>
+                      )}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/50">
@@ -362,20 +404,39 @@ export default function NewProjectPage() {
                         <td className="whitespace-nowrap px-4 py-2.5 font-medium text-white">
                           {row.asset_code}
                         </td>
-                        <td className="whitespace-nowrap px-4 py-2.5 text-slate-300">
-                          {row.scene}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-2.5">
-                          <span className="rounded bg-slate-800 px-2 py-0.5 text-[10px] font-medium text-slate-300">
-                            {row.asset_type || "-"}
-                          </span>
-                        </td>
-                        <td className="max-w-[200px] truncate px-4 py-2.5 text-slate-400">
-                          {row.description || "-"}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-2.5 text-slate-400">
-                          {row.duration ? `${row.duration}s` : "-"}
-                        </td>
+                        {isNewFormat ? (
+                          <>
+                            <td className="max-w-[180px] truncate px-4 py-2.5 text-slate-300">
+                              {row.scenedescription || "-"}
+                            </td>
+                            <td className="max-w-[180px] truncate px-4 py-2.5 text-slate-400">
+                              {row.prompt_image1 || "-"}
+                            </td>
+                            <td className="max-w-[140px] truncate px-4 py-2.5 text-slate-400">
+                              {row.prompt_image2 || <span className="text-slate-600">Opcional</span>}
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-2.5 text-slate-400">
+                              {row.depends_on || "-"}
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="whitespace-nowrap px-4 py-2.5 text-slate-300">
+                              {row.scene}
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-2.5">
+                              <span className="rounded bg-slate-800 px-2 py-0.5 text-[10px] font-medium text-slate-300">
+                                {row.asset_type || "-"}
+                              </span>
+                            </td>
+                            <td className="max-w-[200px] truncate px-4 py-2.5 text-slate-400">
+                              {row.description || "-"}
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-2.5 text-slate-400">
+                              {row.duration ? `${row.duration}s` : "-"}
+                            </td>
+                          </>
+                        )}
                       </tr>
                     ))}
                   </tbody>

@@ -93,12 +93,14 @@ export async function POST(request: NextRequest) {
       provider: overrideProvider,
       model: overrideModel,
       imageNumber = 1,
+      extraReferenceImages: extraRefs,
     } = body as {
       assetId?: string;
       assetIds?: string[];
       provider?: "higgsfield" | "google" | "runway" | "imagen4";
       model?: string;
       imageNumber?: 1 | 2;
+      extraReferenceImages?: string[];
     };
 
     const targetId = singleId ?? assetIds?.[0];
@@ -222,6 +224,11 @@ export async function POST(request: NextRequest) {
       if (charData && Array.isArray(charData.photo_urls) && charData.photo_urls.length > 0) {
         referenceImages.push(...(charData.photo_urls as string[]));
       }
+    }
+
+    // 4e. Extra reference images from the client (e.g. user-uploaded)
+    if (extraRefs && Array.isArray(extraRefs)) {
+      referenceImages.push(...extraRefs);
     }
 
     // Deduplicate and limit
