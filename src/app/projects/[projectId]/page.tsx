@@ -333,6 +333,9 @@ export default function ProjectDashboardPage() {
   // Uploaded reference images for regeneration (key = "assetId-imgNum")
   const [regenRefImages, setRegenRefImages] = useState<Record<string, { url: string; name: string }>>({});
   const [uploadingRef, setUploadingRef] = useState<string | null>(null);
+  // Reference images for pending assets (pre-generation, key = assetId)
+  const [pendingRefs, setPendingRefs] = useState<Record<string, { url: string; name: string }[]>>({});
+  const [uploadingPendingRef, setUploadingPendingRef] = useState<string | null>(null);
   // Lightbox
   const [lightboxSrc, setLightboxSrc] = useState<{ src: string; alt: string } | null>(null);
   // Scene selector for batch image generation
@@ -710,7 +713,14 @@ export default function ProjectDashboardPage() {
           const res = await fetch("/api/dispatch/images", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ assetId: asset.id, provider, imageNumber: 1 }),
+            body: JSON.stringify({
+              assetId: asset.id,
+              provider,
+              imageNumber: 1,
+              ...(pendingRefs[asset.id]?.length && {
+                extraReferenceImages: pendingRefs[asset.id].map((r) => r.url),
+              }),
+            }),
           });
           const data = await res.json();
           if (data.status === "failed") { failed++; continue; }
@@ -724,7 +734,14 @@ export default function ProjectDashboardPage() {
             const res2 = await fetch("/api/dispatch/images", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ assetId: asset.id, provider, imageNumber: 2 }),
+              body: JSON.stringify({
+                assetId: asset.id,
+                provider,
+                imageNumber: 2,
+                ...(pendingRefs[asset.id]?.length && {
+                  extraReferenceImages: pendingRefs[asset.id].map((r) => r.url),
+                }),
+              }),
             });
             const data2 = await res2.json();
             if (data2.status === "completed") completed++;
@@ -1227,6 +1244,7 @@ export default function ProjectDashboardPage() {
             const img1 = asset.image1_url ?? asset.image_url;
             const img2 = asset.image2_url;
             const hasImage2Prompt = !!(asset.prompt_image2?.trim());
+            const isPending = asset.status === "pending";
             const isApproved = asset.status === "approved";
             const isReady = asset.status === "ready";
             const isFailed = asset.status === "failed" || asset.status === "rejected";
@@ -1461,6 +1479,73 @@ export default function ProjectDashboardPage() {
                         <p className="rounded bg-red-900/30 px-2 py-1 text-[10px] text-red-400">
                           {asset.error_message}
                         </p>
+                      )}
+
+                      {/* Pending: reference images upload */}
+                      {isPending && (
+                        <div className="space-y-2">
+                          <p className="text-[10px] font-medium text-slate-500">Imagens de referencia (opcional)</p>
+                          <div className="flex flex-wrap gap-2">
+                            {(pendingRefs[asset.id] ?? []).map((ref, ri) => (
+                              <div key={ri} className="group relative">
+                                <img
+                                  src={ref.url}
+                                  alt={ref.name}
+                                  className="h-14 w-14 cursor-pointer rounded border border-slate-600 object-cover"
+                                  onClick={() => setLightboxSrc({ src: ref.url, alt: ref.name })}
+                                />
+                                <button
+                                  onClick={() => setPendingRefs((prev) => ({
+                                    ...prev,
+                                    [asset.id]: (prev[asset.id] ?? []).filter((_, idx) => idx !== ri),
+                                  }))}
+                                  className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[8px] text-white opacity-0 transition-opacity group-hover:opacity-100"
+                                  title="Remover"
+                                >
+                                  &times;
+                                </button>
+                              </div>
+                            ))}
+                            <label className="flex h-14 w-14 cursor-pointer items-center justify-center rounded border-2 border-dashed border-slate-600 text-slate-500 transition-colors hover:border-purple-500 hover:text-purple-400">
+                              {uploadingPendingRef === asset.id ? (
+                                <div className="h-4 w-4 animate-spin rounded-full border-2 border-slate-500 border-t-white" />
+                              ) : (
+                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                                </svg>
+                              )}
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={async (e) => {
+                                  const file = e.target.files?.[0];
+                                  if (!file) return;
+                                  setUploadingPendingRef(asset.id);
+                                  try {
+                                    const formData = new FormData();
+                                    formData.append("file", file);
+                                    const res = await fetch("/api/upload", { method: "POST", body: formData });
+                                    if (res.ok) {
+                                      const { url } = await res.json();
+                                      setPendingRefs((prev) => ({
+                                        ...prev,
+                                        [asset.id]: [...(prev[asset.id] ?? []), { url, name: file.name }],
+                                      }));
+                                    }
+                                  } catch { /* ignore */ }
+                                  setUploadingPendingRef(null);
+                                  e.target.value = "";
+                                }}
+                              />
+                            </label>
+                          </div>
+                          {(pendingRefs[asset.id]?.length ?? 0) > 0 && (
+                            <p className="text-[9px] text-slate-600">
+                              {pendingRefs[asset.id].length} ref(s) — serao enviadas na geracao
+                            </p>
+                          )}
+                        </div>
                       )}
 
                       {/* Generating */}
