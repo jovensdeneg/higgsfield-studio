@@ -336,6 +336,9 @@ export default function ProjectDashboardPage() {
   // Reference images for pending assets (pre-generation, key = assetId)
   const [pendingRefs, setPendingRefs] = useState<Record<string, { url: string; name: string }[]>>({});
   const [uploadingPendingRef, setUploadingPendingRef] = useState<string | null>(null);
+  // Scene references for pending assets (key = assetId, value = Set of referenced asset_codes)
+  const [pendingSceneRefs, setPendingSceneRefs] = useState<Record<string, Set<string>>>({});
+  const [showSceneRefDropdown, setShowSceneRefDropdown] = useState<string | null>(null);
   // Lightbox
   const [lightboxSrc, setLightboxSrc] = useState<{ src: string; alt: string } | null>(null);
   // Scene selector for batch image generation
@@ -355,7 +358,18 @@ export default function ProjectDashboardPage() {
       if (!res.ok) throw new Error("Erro ao carregar projeto");
       const data = await res.json();
       setProject(data.project ?? data);
-      setAssets(data.project?.assets ?? data.assets ?? []);
+      const loadedAssets = data.project?.assets ?? data.assets ?? [];
+      setAssets(loadedAssets);
+      // Pre-populate scene references from depends_on
+      const initialSceneRefs: Record<string, Set<string>> = {};
+      for (const a of loadedAssets) {
+        if (a.depends_on && a.status === "pending") {
+          initialSceneRefs[a.id] = new Set([a.depends_on]);
+        }
+      }
+      if (Object.keys(initialSceneRefs).length > 0) {
+        setPendingSceneRefs(initialSceneRefs);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro desconhecido");
     } finally {
@@ -710,6 +724,23 @@ export default function ProjectDashboardPage() {
           `Cena ${i + 1}/${total} — gerando frame inicial... (${completed} ok, ${failed} falhas)`
         );
         try {
+          // Collect all extra references: uploaded files + scene references
+          const extraRefs: string[] = [];
+          if (pendingRefs[asset.id]?.length) {
+            extraRefs.push(...pendingRefs[asset.id].map((r) => r.url));
+          }
+          const sceneRefCodes = pendingSceneRefs[asset.id];
+          if (sceneRefCodes?.size) {
+            for (const code of sceneRefCodes) {
+              const refAsset = assets.find((a) => a.asset_code === code);
+              if (refAsset) {
+                const r1 = refAsset.image1_url ?? refAsset.image_url;
+                if (r1) extraRefs.push(r1);
+                if (refAsset.image2_url) extraRefs.push(refAsset.image2_url);
+              }
+            }
+          }
+
           const res = await fetch("/api/dispatch/images", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -717,9 +748,7 @@ export default function ProjectDashboardPage() {
               assetId: asset.id,
               provider,
               imageNumber: 1,
-              ...(pendingRefs[asset.id]?.length && {
-                extraReferenceImages: pendingRefs[asset.id].map((r) => r.url),
-              }),
+              ...(extraRefs.length > 0 && { extraReferenceImages: extraRefs }),
             }),
           });
           const data = await res.json();
@@ -738,9 +767,7 @@ export default function ProjectDashboardPage() {
                 assetId: asset.id,
                 provider,
                 imageNumber: 2,
-                ...(pendingRefs[asset.id]?.length && {
-                  extraReferenceImages: pendingRefs[asset.id].map((r) => r.url),
-                }),
+                ...(extraRefs.length > 0 && { extraReferenceImages: extraRefs }),
               }),
             });
             const data2 = await res2.json();
@@ -1324,10 +1351,10 @@ export default function ProjectDashboardPage() {
                 }`}
               >
                 <div className="flex flex-col lg:flex-row">
-                  {/* Left: Dual images side by side */}
-                  <div className="flex min-h-[200px] flex-1 lg:min-h-[280px]">
-                    {/* Image 1 */}
-                    <div className="relative w-1/2 border-r border-slate-700/50 bg-slate-800">
+                  {/* Left: Images */}
+                  <div className="relative flex min-h-[200px] flex-1 lg:min-h-[280px]">
+                    {/* Image 1 — full width when no image2 prompt */}
+                    <div className={`relative bg-slate-800 ${hasImage2Prompt ? "w-1/2 border-r border-slate-700/50" : "w-full"}`}>
                       {img1 ? (
                         <>
                           <img
@@ -1348,39 +1375,43 @@ export default function ProjectDashboardPage() {
                         </div>
                       )}
                       <span className="absolute bottom-2 left-2 rounded bg-slate-900/80 px-2 py-0.5 text-[10px] font-semibold text-slate-200 backdrop-blur-sm">
-                        Imagem 1 — Inicial
+                        Imagem 1{hasImage2Prompt ? " — Inicial" : ""}
                       </span>
+                      {/* When no image2 prompt, show small badge */}
+                      {!hasImage2Prompt && (
+                        <span className="absolute bottom-2 right-2 rounded bg-slate-900/70 px-2 py-0.5 text-[9px] text-slate-500 backdrop-blur-sm">
+                          Imagem 2 Nao Requisitada
+                        </span>
+                      )}
                     </div>
 
-                    {/* Image 2 */}
-                    <div className="relative w-1/2 bg-slate-800">
-                      {img2 ? (
-                        <>
-                          <img
-                            src={img2} alt={`${asset.asset_code} - Frame Final`}
-                            className="h-full w-full cursor-pointer object-cover transition-opacity hover:opacity-90"
-                            onClick={() => setLightboxSrc({ src: img2, alt: `${asset.asset_code} - Frame Final` })}
-                          />
-                          <DownloadBtn url={img2} label="Frame Final" />
-                        </>
-                      ) : !hasImage2Prompt ? (
-                        <div className="flex h-full w-full items-center justify-center">
-                          <p className="text-sm font-medium text-slate-600">Opcional</p>
-                        </div>
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center">
-                          <div className="text-center">
-                            <svg className="mx-auto h-8 w-8 text-slate-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z" />
-                            </svg>
-                            <p className="mt-1 text-[10px] text-slate-500">Frame Final</p>
+                    {/* Image 2 — only shown when prompt_image2 exists */}
+                    {hasImage2Prompt && (
+                      <div className="relative w-1/2 bg-slate-800">
+                        {img2 ? (
+                          <>
+                            <img
+                              src={img2} alt={`${asset.asset_code} - Frame Final`}
+                              className="h-full w-full cursor-pointer object-cover transition-opacity hover:opacity-90"
+                              onClick={() => setLightboxSrc({ src: img2, alt: `${asset.asset_code} - Frame Final` })}
+                            />
+                            <DownloadBtn url={img2} label="Frame Final" />
+                          </>
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center">
+                            <div className="text-center">
+                              <svg className="mx-auto h-8 w-8 text-slate-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z" />
+                              </svg>
+                              <p className="mt-1 text-[10px] text-slate-500">Frame Final</p>
+                            </div>
                           </div>
-                        </div>
-                      )}
-                      <span className="absolute bottom-2 left-2 rounded bg-slate-900/80 px-2 py-0.5 text-[10px] font-semibold text-slate-200 backdrop-blur-sm">
-                        Imagem 2 — Final
-                      </span>
-                    </div>
+                        )}
+                        <span className="absolute bottom-2 left-2 rounded bg-slate-900/80 px-2 py-0.5 text-[10px] font-semibold text-slate-200 backdrop-blur-sm">
+                          Imagem 2 — Final
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Right: Info + Actions */}
@@ -1481,72 +1512,188 @@ export default function ProjectDashboardPage() {
                         </p>
                       )}
 
-                      {/* Pending: reference images upload */}
-                      {isPending && (
-                        <div className="space-y-2">
-                          <p className="text-[10px] font-medium text-slate-500">Imagens de referencia (opcional)</p>
-                          <div className="flex flex-wrap gap-2">
-                            {(pendingRefs[asset.id] ?? []).map((ref, ri) => (
-                              <div key={ri} className="group relative">
-                                <img
-                                  src={ref.url}
-                                  alt={ref.name}
-                                  className="h-14 w-14 cursor-pointer rounded border border-slate-600 object-cover"
-                                  onClick={() => setLightboxSrc({ src: ref.url, alt: ref.name })}
-                                />
-                                <button
-                                  onClick={() => setPendingRefs((prev) => ({
-                                    ...prev,
-                                    [asset.id]: (prev[asset.id] ?? []).filter((_, idx) => idx !== ri),
-                                  }))}
-                                  className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[8px] text-white opacity-0 transition-opacity group-hover:opacity-100"
-                                  title="Remover"
-                                >
-                                  &times;
-                                </button>
-                              </div>
-                            ))}
-                            <label className="flex h-14 w-14 cursor-pointer items-center justify-center rounded border-2 border-dashed border-slate-600 text-slate-500 transition-colors hover:border-purple-500 hover:text-purple-400">
-                              {uploadingPendingRef === asset.id ? (
-                                <div className="h-4 w-4 animate-spin rounded-full border-2 border-slate-500 border-t-white" />
-                              ) : (
-                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                                </svg>
-                              )}
-                              <input
-                                type="file"
-                                accept="image/*"
-                                className="hidden"
-                                onChange={async (e) => {
-                                  const file = e.target.files?.[0];
-                                  if (!file) return;
-                                  setUploadingPendingRef(asset.id);
-                                  try {
-                                    const formData = new FormData();
-                                    formData.append("file", file);
-                                    const res = await fetch("/api/upload", { method: "POST", body: formData });
-                                    if (res.ok) {
-                                      const { url } = await res.json();
+                      {/* Pending: reference images upload + scene refs */}
+                      {isPending && (() => {
+                        const uploadedCount = pendingRefs[asset.id]?.length ?? 0;
+                        const sceneRefSet = pendingSceneRefs[asset.id] ?? new Set<string>();
+                        // Count scene ref images
+                        let sceneRefImgCount = 0;
+                        for (const code of sceneRefSet) {
+                          const ra = assets.find((a) => a.asset_code === code);
+                          if (ra) {
+                            if (ra.image1_url ?? ra.image_url) sceneRefImgCount++;
+                            if (ra.image2_url) sceneRefImgCount++;
+                          }
+                        }
+                        const totalRefs = uploadedCount + sceneRefImgCount;
+                        // Other scenes that have images (for the dropdown)
+                        const otherScenes = assets.filter((a) => a.id !== asset.id && (a.image1_url || a.image_url || a.image2_url));
+
+                        return (
+                          <div className="space-y-2">
+                            <p className="text-[10px] font-medium text-slate-500">Referencias visuais (opcional)</p>
+
+                            {/* Uploaded images row */}
+                            <div className="flex flex-wrap gap-2">
+                              {(pendingRefs[asset.id] ?? []).map((ref, ri) => (
+                                <div key={`up-${ri}`} className="group relative">
+                                  <img
+                                    src={ref.url} alt={ref.name}
+                                    className="h-12 w-12 cursor-pointer rounded border border-slate-600 object-cover"
+                                    onClick={() => setLightboxSrc({ src: ref.url, alt: ref.name })}
+                                  />
+                                  <button
+                                    onClick={() => setPendingRefs((prev) => ({
+                                      ...prev,
+                                      [asset.id]: (prev[asset.id] ?? []).filter((_, idx) => idx !== ri),
+                                    }))}
+                                    className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[8px] text-white opacity-0 transition-opacity group-hover:opacity-100"
+                                    title="Remover"
+                                  >&times;</button>
+                                </div>
+                              ))}
+                              {/* Scene ref thumbnails */}
+                              {[...sceneRefSet].map((code) => {
+                                const ra = assets.find((a) => a.asset_code === code);
+                                const img = ra?.image1_url ?? ra?.image_url;
+                                if (!img) return null;
+                                return (
+                                  <div key={`sc-${code}`} className="group relative">
+                                    <img
+                                      src={img} alt={code}
+                                      className="h-12 w-12 cursor-pointer rounded border border-purple-500/50 object-cover ring-1 ring-purple-500/30"
+                                      onClick={() => setLightboxSrc({ src: img, alt: code })}
+                                    />
+                                    <span className="absolute bottom-0 left-0 right-0 truncate bg-slate-900/80 px-0.5 text-center text-[7px] font-bold text-purple-300">
+                                      {code}
+                                    </span>
+                                    <button
+                                      onClick={() => setPendingSceneRefs((prev) => {
+                                        const next = new Set(prev[asset.id] ?? []);
+                                        next.delete(code);
+                                        return { ...prev, [asset.id]: next };
+                                      })}
+                                      className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[8px] text-white opacity-0 transition-opacity group-hover:opacity-100"
+                                      title="Remover cena"
+                                    >&times;</button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {/* Buttons row */}
+                            <div className="flex gap-2">
+                              {/* Upload multiple images */}
+                              <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-slate-600 px-2.5 py-1.5 text-[10px] text-slate-400 transition-colors hover:border-purple-500 hover:text-purple-300">
+                                {uploadingPendingRef === asset.id ? (
+                                  <div className="h-3 w-3 animate-spin rounded-full border-2 border-slate-500 border-t-white" />
+                                ) : (
+                                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
+                                  </svg>
+                                )}
+                                Upload imagens
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  multiple
+                                  className="hidden"
+                                  onChange={async (e) => {
+                                    const files = e.target.files;
+                                    if (!files || files.length === 0) return;
+                                    setUploadingPendingRef(asset.id);
+                                    const newRefs: { url: string; name: string }[] = [];
+                                    for (let fi = 0; fi < files.length; fi++) {
+                                      try {
+                                        const formData = new FormData();
+                                        formData.append("file", files[fi]);
+                                        const res = await fetch("/api/upload", { method: "POST", body: formData });
+                                        if (res.ok) {
+                                          const { url } = await res.json();
+                                          newRefs.push({ url, name: files[fi].name });
+                                        }
+                                      } catch { /* ignore */ }
+                                    }
+                                    if (newRefs.length > 0) {
                                       setPendingRefs((prev) => ({
                                         ...prev,
-                                        [asset.id]: [...(prev[asset.id] ?? []), { url, name: file.name }],
+                                        [asset.id]: [...(prev[asset.id] ?? []), ...newRefs],
                                       }));
                                     }
-                                  } catch { /* ignore */ }
-                                  setUploadingPendingRef(null);
-                                  e.target.value = "";
-                                }}
-                              />
-                            </label>
+                                    setUploadingPendingRef(null);
+                                    e.target.value = "";
+                                  }}
+                                />
+                              </label>
+
+                              {/* Scene reference selector */}
+                              {otherScenes.length > 0 && (
+                                <div className="relative">
+                                  <button
+                                    onClick={() => setShowSceneRefDropdown(showSceneRefDropdown === asset.id ? null : asset.id)}
+                                    className="flex items-center gap-1.5 rounded-lg border border-dashed border-slate-600 px-2.5 py-1.5 text-[10px] text-slate-400 transition-colors hover:border-purple-500 hover:text-purple-300"
+                                  >
+                                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z" />
+                                    </svg>
+                                    Cenas de referencia
+                                    {sceneRefSet.size > 0 && (
+                                      <span className="rounded-full bg-purple-600 px-1.5 text-[9px] font-bold text-white">{sceneRefSet.size}</span>
+                                    )}
+                                  </button>
+                                  {showSceneRefDropdown === asset.id && (
+                                    <div className="absolute left-0 top-full z-30 mt-1 max-h-52 w-64 overflow-y-auto rounded-lg border border-slate-700 bg-slate-800 p-1 shadow-xl">
+                                      {otherScenes.map((other) => {
+                                        const isSelected = sceneRefSet.has(other.asset_code);
+                                        const thumb = other.image1_url ?? other.image_url;
+                                        return (
+                                          <button
+                                            key={other.id}
+                                            onClick={() => {
+                                              setPendingSceneRefs((prev) => {
+                                                const next = new Set(prev[asset.id] ?? []);
+                                                if (isSelected) next.delete(other.asset_code);
+                                                else next.add(other.asset_code);
+                                                return { ...prev, [asset.id]: next };
+                                              });
+                                            }}
+                                            className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[10px] transition-colors ${
+                                              isSelected ? "bg-purple-600/20 text-purple-300" : "text-slate-300 hover:bg-slate-700"
+                                            }`}
+                                          >
+                                            {thumb ? (
+                                              <img src={thumb} alt={other.asset_code} className="h-8 w-8 flex-shrink-0 rounded object-cover" />
+                                            ) : (
+                                              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded bg-slate-700 text-[8px] text-slate-500">?</div>
+                                            )}
+                                            <div className="min-w-0 flex-1">
+                                              <span className="font-semibold">{other.asset_code}</span>
+                                              {other.scenedescription && (
+                                                <p className="truncate text-[9px] text-slate-500">{other.scenedescription}</p>
+                                              )}
+                                            </div>
+                                            {isSelected && (
+                                              <svg className="h-4 w-4 flex-shrink-0 text-purple-400" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                                              </svg>
+                                            )}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+
+                            {totalRefs > 0 && (
+                              <p className="text-[9px] text-slate-600">
+                                {totalRefs} imagem(ns) de referencia — serao enviadas na geracao
+                              </p>
+                            )}
                           </div>
-                          {(pendingRefs[asset.id]?.length ?? 0) > 0 && (
-                            <p className="text-[9px] text-slate-600">
-                              {pendingRefs[asset.id].length} ref(s) — serao enviadas na geracao
-                            </p>
-                          )}
-                        </div>
-                      )}
+                        );
+                      })()}
 
                       {/* Generating */}
                       {isGenerating && (
