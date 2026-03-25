@@ -146,13 +146,14 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // For image1: asset must be "pending" or "generating" (if image2 dispatch)
+    // For image1: allow pending, generating, failed, rejected (regeneration case)
     // For image2: asset should already have image1 generated
-    if (imageNumber === 1 && asset.status !== "pending") {
+    const allowedForImage1 = new Set(["pending", "generating", "failed", "rejected"]);
+    if (imageNumber === 1 && !allowedForImage1.has(asset.status)) {
       return NextResponse.json({
         status: "skipped",
         assetId: asset.id,
-        reason: `Status is '${asset.status}', expected 'pending'`,
+        reason: `Status is '${asset.status}', not eligible for image generation`,
         remaining,
       });
     }

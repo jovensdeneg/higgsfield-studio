@@ -42,12 +42,12 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: false });
 
     if (type === "images") {
-      query = query.not("image_url", "is", null);
+      query = query.or("image_url.not.is.null,image1_url.not.is.null,image2_url.not.is.null");
     } else if (type === "videos") {
       query = query.not("video_url", "is", null);
     } else {
-      // "all" — assets that have either image or video
-      query = query.or("image_url.not.is.null,video_url.not.is.null");
+      // "all" — assets that have any image or video
+      query = query.or("image_url.not.is.null,image1_url.not.is.null,image2_url.not.is.null,video_url.not.is.null");
     }
 
     const { data: assets } = await query;
