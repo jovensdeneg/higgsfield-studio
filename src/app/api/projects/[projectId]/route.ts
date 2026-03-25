@@ -63,26 +63,13 @@ export async function GET(_request: NextRequest, ctx: RouteContext) {
 /**
  * DELETE /api/projects/[projectId]
  *
- * Deletes the project. Assets are deleted first to ensure cleanup
- * even if FK cascade is not configured at the DB level.
+ * Deletes only the project record. Assets are intentionally kept
+ * so they remain available in the gallery.
  */
 export async function DELETE(_request: NextRequest, ctx: RouteContext) {
   try {
     const { projectId } = await ctx.params;
     const supabase = createServerClient();
-
-    // Delete assets first (safe even if FK cascade exists)
-    const { error: assetsDeleteError } = await supabase
-      .from("assets")
-      .delete()
-      .eq("project_id", projectId);
-
-    if (assetsDeleteError) {
-      return NextResponse.json(
-        { error: `Failed to delete assets: ${assetsDeleteError.message}` },
-        { status: 500 },
-      );
-    }
 
     const { error: projectDeleteError } = await supabase
       .from("projects")

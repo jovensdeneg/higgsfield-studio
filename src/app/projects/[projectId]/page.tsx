@@ -5,6 +5,38 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 
+/** Lightbox overlay for viewing images full-size */
+function Lightbox({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={onClose}>
+      <div className="relative max-h-[90vh] max-w-[90vw]" onClick={(e) => e.stopPropagation()}>
+        <img src={src} alt={alt} className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain" />
+        <button onClick={onClose} className="absolute -right-3 -top-3 flex h-8 w-8 items-center justify-center rounded-full bg-slate-800 text-white hover:bg-slate-700">
+          &times;
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Copy-to-clipboard button */
+function CopyBtn({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
+      className="ml-1 inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-700 hover:text-white"
+      title="Copiar"
+    >
+      {copied ? (
+        <svg className="h-3 w-3 text-green-400" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+      ) : (
+        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9.75a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184" /></svg>
+      )}
+    </button>
+  );
+}
+
 interface Asset {
   id: string;
   asset_code: string;
@@ -132,6 +164,11 @@ export default function ProjectDashboardPage() {
   const [regenVideoProvider, setRegenVideoProvider] = useState<Record<string, string>>({});
   // Carry-reference toggles: when regenerating image X, optionally send the other image as reference
   const [carryReference, setCarryReference] = useState<Record<string, boolean>>({});
+  // Lightbox
+  const [lightboxSrc, setLightboxSrc] = useState<{ src: string; alt: string } | null>(null);
+  // Scene selector for batch image generation
+  const [showSceneSelector, setShowSceneSelector] = useState(false);
+  const [selectedScenes, setSelectedScenes] = useState<Set<string>>(new Set());
   const dispatchQueueRef = useRef<string[]>([]);
   const isDispatchingRef = useRef(false);
 
@@ -430,14 +467,14 @@ export default function ProjectDashboardPage() {
     setActionLoading(null);
   }
 
-  async function handleDispatchImages() {
+  async function handleDispatchImages(sceneSet?: Set<string>) {
     // Prevent double-clicks
     if (isDispatchingRef.current) return;
 
     // Find assets that need image generation:
-    // - "pending" with prompt_image1 or prompt_image → needs image1
-    // - "generating" with image1_url/image_url but no image2_url and has prompt_image2 → needs image2
     const pendingAssets = assets.filter((a) => {
+      // If scene set provided, only include those scenes
+      if (sceneSet && sceneSet.size > 0 && !sceneSet.has(a.asset_code)) return false;
       if (a.status === "pending" && (a.prompt_image1 || a.prompt_image)) return true;
       if (a.status === "generating" && (a.image1_url || a.image_url) && !a.image2_url && a.prompt_image2) return true;
       return false;
@@ -712,30 +749,83 @@ export default function ProjectDashboardPage() {
             <option value="google">Google AI</option>
             <option value="runway">Runway</option>
           </select>
-          <button
-            className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-purple-500 disabled:opacity-50"
-            onClick={handleDispatchImages}
-            disabled={dispatching !== null}
-          >
-            {dispatching === "images" ? (
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-            ) : (
-              <svg
-                className="h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={2}
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z"
-                />
-              </svg>
+          <div className="relative">
+            <button
+              className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-purple-500 disabled:opacity-50"
+              onClick={() => {
+                if (dispatching === "images") return;
+                setShowSceneSelector(!showSceneSelector);
+              }}
+              disabled={dispatching !== null}
+            >
+              {dispatching === "images" ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+              ) : (
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z" />
+                </svg>
+              )}
+              Gerar Imagens {pendingCount > 0 && `(${pendingCount})`}
+            </button>
+            {/* Scene selector dropdown */}
+            {showSceneSelector && (
+              <div className="absolute right-0 top-full z-30 mt-2 w-72 rounded-xl border border-slate-700 bg-slate-900 p-3 shadow-xl">
+                <p className="mb-2 text-xs font-semibold text-slate-400">Selecionar cenas para gerar:</p>
+                <div className="mb-2 max-h-48 space-y-1 overflow-y-auto">
+                  {assets
+                    .filter((a) => a.status === "pending" && (a.prompt_image1 || a.prompt_image))
+                    .map((a) => (
+                      <label key={a.id} className="flex items-center gap-2 rounded px-2 py-1 text-xs text-slate-300 hover:bg-slate-800">
+                        <input
+                          type="checkbox"
+                          checked={selectedScenes.has(a.asset_code)}
+                          onChange={(e) => {
+                            setSelectedScenes((prev) => {
+                              const next = new Set(prev);
+                              if (e.target.checked) next.add(a.asset_code);
+                              else next.delete(a.asset_code);
+                              return next;
+                            });
+                          }}
+                          className="rounded border-slate-600"
+                        />
+                        <span className="font-medium">{a.asset_code}</span>
+                        <span className="truncate text-slate-500">{a.scenedescription ?? a.description ?? ""}</span>
+                      </label>
+                    ))}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      const allPending = new Set(
+                        assets.filter((a) => a.status === "pending" && (a.prompt_image1 || a.prompt_image)).map((a) => a.asset_code)
+                      );
+                      setSelectedScenes(allPending);
+                    }}
+                    className="rounded-lg bg-slate-800 px-3 py-1.5 text-[10px] text-slate-300 hover:bg-slate-700"
+                  >
+                    Todas
+                  </button>
+                  <button
+                    onClick={() => setSelectedScenes(new Set())}
+                    className="rounded-lg bg-slate-800 px-3 py-1.5 text-[10px] text-slate-300 hover:bg-slate-700"
+                  >
+                    Nenhuma
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowSceneSelector(false);
+                      handleDispatchImages(selectedScenes.size > 0 ? selectedScenes : undefined);
+                    }}
+                    disabled={selectedScenes.size === 0}
+                    className="flex-1 rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-500 disabled:opacity-50"
+                  >
+                    Gerar ({selectedScenes.size})
+                  </button>
+                </div>
+              </div>
             )}
-            Gerar Imagens {pendingCount > 0 && `(${pendingCount})`}
-          </button>
+          </div>
           <select
             value={videoProvider}
             onChange={(e) => setVideoProvider(e.target.value)}
@@ -939,6 +1029,7 @@ export default function ProjectDashboardPage() {
           {filtered.map((asset) => {
             const img1 = asset.image1_url ?? asset.image_url;
             const img2 = asset.image2_url;
+            const hasImage2Prompt = !!(asset.prompt_image2?.trim());
             const isApproved = asset.status === "approved";
             const isReady = asset.status === "ready";
             const isFailed = asset.status === "failed" || asset.status === "rejected";
@@ -1028,7 +1119,11 @@ export default function ProjectDashboardPage() {
                     <div className="relative w-1/2 border-r border-slate-700/50 bg-slate-800">
                       {img1 ? (
                         <>
-                          <img src={img1} alt={`${asset.asset_code} - Frame Inicial`} className="h-full w-full object-cover" />
+                          <img
+                            src={img1} alt={`${asset.asset_code} - Frame Inicial`}
+                            className="h-full w-full cursor-pointer object-cover transition-opacity hover:opacity-90"
+                            onClick={() => setLightboxSrc({ src: img1, alt: `${asset.asset_code} - Frame Inicial` })}
+                          />
                           <DownloadBtn url={img1} label="Frame Inicial" />
                         </>
                       ) : (
@@ -1050,9 +1145,17 @@ export default function ProjectDashboardPage() {
                     <div className="relative w-1/2 bg-slate-800">
                       {img2 ? (
                         <>
-                          <img src={img2} alt={`${asset.asset_code} - Frame Final`} className="h-full w-full object-cover" />
+                          <img
+                            src={img2} alt={`${asset.asset_code} - Frame Final`}
+                            className="h-full w-full cursor-pointer object-cover transition-opacity hover:opacity-90"
+                            onClick={() => setLightboxSrc({ src: img2, alt: `${asset.asset_code} - Frame Final` })}
+                          />
                           <DownloadBtn url={img2} label="Frame Final" />
                         </>
+                      ) : !hasImage2Prompt ? (
+                        <div className="flex h-full w-full items-center justify-center">
+                          <p className="text-sm font-medium text-slate-600">Opcional</p>
+                        </div>
                       ) : (
                         <div className="flex h-full w-full items-center justify-center">
                           <div className="text-center">
@@ -1070,7 +1173,7 @@ export default function ProjectDashboardPage() {
                   </div>
 
                   {/* Right: Info + Actions */}
-                  <div className="flex w-full flex-col justify-between p-5 lg:w-[380px]">
+                  <div className="flex w-full flex-col justify-between overflow-y-auto p-5 lg:w-[420px]">
                     {/* Header */}
                     <div>
                       <div className="mb-2 flex items-center justify-between">
@@ -1092,25 +1195,52 @@ export default function ProjectDashboardPage() {
                         )}
                       </div>
 
-                      {/* CSV metadata */}
-                      <div className="mb-3 grid grid-cols-2 gap-x-3 gap-y-1 rounded-lg bg-slate-800/60 p-2.5 text-[10px]">
-                        {asset.scene && asset.scene !== asset.asset_code && (
-                          <><span className="text-slate-500">Cena</span><span className="text-slate-300">{asset.scene}</span></>
+                      {/* CSV metadata with copy buttons for prompts */}
+                      <div className="mb-3 space-y-1 rounded-lg bg-slate-800/60 p-2.5 text-[10px]">
+                        <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+                          {asset.scene && asset.scene !== asset.asset_code && (
+                            <><span className="text-slate-500">Cena</span><span className="text-slate-300">{asset.scene}</span></>
+                          )}
+                          {asset.asset_type && (
+                            <><span className="text-slate-500">Tipo</span><span className="text-slate-300">{asset.asset_type}</span></>
+                          )}
+                          {params.duration && (
+                            <><span className="text-slate-500">Duracao</span><span className="text-slate-300">{params.duration}s</span></>
+                          )}
+                        </div>
+                        {/* Prompts with copy buttons */}
+                        {(asset.prompt_image1 ?? asset.prompt_image) && (
+                          <div className="mt-1.5 border-t border-slate-700/50 pt-1.5">
+                            <div className="flex items-start gap-1">
+                              <span className="flex-shrink-0 text-slate-500">Prompt Img 1</span>
+                              <CopyBtn text={asset.prompt_image1 ?? asset.prompt_image ?? ""} />
+                            </div>
+                            <p className="mt-0.5 line-clamp-2 text-slate-400" title={asset.prompt_image1 ?? asset.prompt_image ?? ""}>
+                              {(asset.prompt_image1 ?? asset.prompt_image ?? "").slice(0, 120)}...
+                            </p>
+                          </div>
                         )}
-                        {asset.asset_type && (
-                          <><span className="text-slate-500">Tipo</span><span className="text-slate-300">{asset.asset_type}</span></>
-                        )}
-                        {params.duration && (
-                          <><span className="text-slate-500">Duracao</span><span className="text-slate-300">{String(params.duration)}s</span></>
-                        )}
-                        {asset.image_tool && (
-                          <><span className="text-slate-500">Tool Img</span><span className="text-slate-300">{asset.image_tool}</span></>
-                        )}
-                        {asset.video_tool && (
-                          <><span className="text-slate-500">Tool Video</span><span className="text-slate-300">{asset.video_tool}</span></>
+                        {asset.prompt_image2 && (
+                          <div className="mt-1 border-t border-slate-700/50 pt-1">
+                            <div className="flex items-start gap-1">
+                              <span className="flex-shrink-0 text-slate-500">Prompt Img 2</span>
+                              <CopyBtn text={asset.prompt_image2} />
+                            </div>
+                            <p className="mt-0.5 line-clamp-2 text-slate-400" title={asset.prompt_image2}>
+                              {asset.prompt_image2.slice(0, 120)}...
+                            </p>
+                          </div>
                         )}
                         {asset.prompt_video && (
-                          <><span className="text-slate-500">Prompt Video</span><span className="truncate text-slate-300" title={asset.prompt_video}>{asset.prompt_video.slice(0, 60)}...</span></>
+                          <div className="mt-1 border-t border-slate-700/50 pt-1">
+                            <div className="flex items-start gap-1">
+                              <span className="flex-shrink-0 text-slate-500">Prompt Video</span>
+                              <CopyBtn text={asset.prompt_video} />
+                            </div>
+                            <p className="mt-0.5 line-clamp-2 text-slate-400" title={asset.prompt_video}>
+                              {asset.prompt_video.slice(0, 120)}...
+                            </p>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -1154,16 +1284,18 @@ export default function ProjectDashboardPage() {
                             >
                               Rejeitar Imagem 1
                             </button>
-                            <button
-                              onClick={() => setShowRejectInput(showRejectInput === `${asset.id}-2` ? null : `${asset.id}-2`)}
-                              disabled={actionLoading === asset.id}
-                              className="flex-1 rounded-lg border border-red-700/50 bg-red-900/20 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-900/40 disabled:opacity-50"
-                            >
-                              Rejeitar Imagem 2
-                            </button>
+                            {hasImage2Prompt && (
+                              <button
+                                onClick={() => setShowRejectInput(showRejectInput === `${asset.id}-2` ? null : `${asset.id}-2`)}
+                                disabled={actionLoading === asset.id}
+                                className="flex-1 rounded-lg border border-red-700/50 bg-red-900/20 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-900/40 disabled:opacity-50"
+                              >
+                                Rejeitar Imagem 2
+                              </button>
+                            )}
                           </div>
                           <RejectPanel imgNum={1} />
-                          <RejectPanel imgNum={2} />
+                          {hasImage2Prompt && <RejectPanel imgNum={2} />}
                         </>
                       )}
 
@@ -1197,15 +1329,17 @@ export default function ProjectDashboardPage() {
                             >
                               Regenerar Imagem 1
                             </button>
-                            <button
-                              onClick={() => setShowRejectInput(showRejectInput === `${asset.id}-2` ? null : `${asset.id}-2`)}
-                              className="flex-1 rounded-lg border border-amber-700/50 bg-amber-900/20 px-3 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-900/40"
-                            >
-                              Regenerar Imagem 2
-                            </button>
+                            {hasImage2Prompt && (
+                              <button
+                                onClick={() => setShowRejectInput(showRejectInput === `${asset.id}-2` ? null : `${asset.id}-2`)}
+                                className="flex-1 rounded-lg border border-amber-700/50 bg-amber-900/20 px-3 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-900/40"
+                              >
+                                Regenerar Imagem 2
+                              </button>
+                            )}
                           </div>
                           <RejectPanel imgNum={1} />
-                          <RejectPanel imgNum={2} />
+                          {hasImage2Prompt && <RejectPanel imgNum={2} />}
                         </>
                       )}
                     </div>
@@ -1215,6 +1349,11 @@ export default function ProjectDashboardPage() {
             );
           })}
         </div>
+      )}
+
+      {/* Lightbox overlay */}
+      {lightboxSrc && (
+        <Lightbox src={lightboxSrc.src} alt={lightboxSrc.alt} onClose={() => setLightboxSrc(null)} />
       )}
     </div>
   );
