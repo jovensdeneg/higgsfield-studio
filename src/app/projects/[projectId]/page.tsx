@@ -50,6 +50,156 @@ function EditBtn({ onClick }: { onClick: () => void }) {
   );
 }
 
+/** Modal for editing reject/regeneration prompt — stable component with internal state */
+function RejectModal({
+  assetCode,
+  imgNum,
+  initialText,
+  otherImgLabel,
+  hasOtherImg,
+  providers,
+  defaultProvider,
+  uploadedRef,
+  uploadingRef: isUploading,
+  onUploadRef,
+  onRemoveRef,
+  onLightboxRef,
+  onSubmit,
+  onClose,
+}: {
+  assetCode: string;
+  imgNum: 1 | 2;
+  initialText: string;
+  otherImgLabel: string | null;
+  hasOtherImg: boolean;
+  providers: { value: string; label: string }[];
+  defaultProvider: string;
+  uploadedRef: { url: string; name: string } | undefined;
+  uploadingRef: boolean;
+  onUploadRef: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onRemoveRef: () => void;
+  onLightboxRef: (url: string) => void;
+  onSubmit: (text: string, provider: string, carryRef: boolean) => void;
+  onClose: () => void;
+}) {
+  const [text, setText] = useState(initialText);
+  const [provider, setProvider] = useState(defaultProvider);
+  const [carry, setCarry] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    // Focus textarea on open
+    setTimeout(() => textareaRef.current?.focus(), 50);
+  }, []);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="w-full max-w-xl rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-slate-700 px-5 py-3">
+          <h3 className="text-sm font-semibold text-white">
+            Regenerar Imagem {imgNum} — {assetCode}
+          </h3>
+          <button onClick={onClose} className="flex h-7 w-7 items-center justify-center rounded-full text-slate-400 hover:bg-slate-800 hover:text-white">
+            &times;
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="space-y-4 p-5">
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-slate-400">
+              Novo prompt / ajuste para imagem {imgNum}
+            </label>
+            <textarea
+              ref={textareaRef}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              rows={6}
+              className="w-full resize-y rounded-lg border border-slate-600 bg-slate-800 px-4 py-3 text-sm leading-relaxed text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500/30"
+              placeholder="Descreva o que quer diferente nesta imagem..."
+            />
+          </div>
+
+          {/* Options row */}
+          <div className="flex flex-wrap items-center gap-3">
+            {hasOtherImg && (
+              <label className="flex items-center gap-2 text-xs text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={carry}
+                  onChange={(e) => setCarry(e.target.checked)}
+                  className="rounded border-slate-600 bg-slate-800"
+                />
+                Levar {otherImgLabel} como referencia
+              </label>
+            )}
+
+            {/* Ref image upload */}
+            <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-slate-600 px-3 py-2 text-xs text-slate-300 transition-colors hover:border-purple-500 hover:text-purple-300">
+              {isUploading ? (
+                <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-500 border-t-white" />
+              ) : (
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
+                </svg>
+              )}
+              {uploadedRef ? uploadedRef.name : "Imagem de referencia"}
+              <input type="file" accept="image/*" className="hidden" onChange={onUploadRef} />
+            </label>
+            {uploadedRef && (
+              <button onClick={onRemoveRef} className="text-xs text-red-400 hover:text-red-300" title="Remover referencia">
+                &times;
+              </button>
+            )}
+          </div>
+
+          {/* Uploaded ref preview */}
+          {uploadedRef && (
+            <div className="flex items-center gap-2">
+              <img
+                src={uploadedRef.url} alt="Referencia"
+                className="h-14 w-14 cursor-pointer rounded border border-slate-600 object-cover"
+                onClick={() => onLightboxRef(uploadedRef.url)}
+              />
+              <span className="text-[10px] text-slate-500">Sera enviada como referencia visual</span>
+            </div>
+          )}
+
+          {/* Provider + action */}
+          <div className="flex items-center gap-3 border-t border-slate-700 pt-4">
+            <select
+              value={provider}
+              onChange={(e) => setProvider(e.target.value)}
+              className="rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-xs text-white outline-none"
+            >
+              {providers.map((p) => (
+                <option key={p.value} value={p.value}>{p.label}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => onSubmit(text, provider, carry)}
+              disabled={text.trim().length < 3}
+              className="flex-1 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-500 disabled:opacity-50"
+            >
+              Regenerar Imagem {imgNum}
+            </button>
+            <button
+              onClick={onClose}
+              className="rounded-lg border border-slate-600 px-3 py-2 text-xs text-slate-400 hover:bg-slate-800"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface Asset {
   id: string;
   asset_code: string;
@@ -367,24 +517,20 @@ export default function ProjectDashboardPage() {
     setActionLoading(null);
   }
 
-  /** Regenerate a specific image (1 or 2) for a scene */
-  async function handleRegenerateImage(assetId: string, imageNumber: 1 | 2) {
+  /** Regenerate a specific image (1 or 2) for a scene — called from RejectModal */
+  async function handleRegenerateImage(assetId: string, imageNumber: 1 | 2, modalText?: string, modalProvider?: string, modalCarry?: boolean) {
     const rejectKey = `${assetId}-${imageNumber}`;
     setActionLoading(assetId);
     try {
       const asset = assets.find((a) => a.id === assetId);
-      const feedback = rejectNotes[rejectKey]?.trim();
-      const provider = regenImageProvider[rejectKey] ?? imageProvider;
-      const shouldCarryRef = carryReference[rejectKey] ?? false;
+      const feedback = modalText?.trim() ?? rejectNotes[rejectKey]?.trim();
+      const provider = modalProvider ?? regenImageProvider[rejectKey] ?? imageProvider;
 
       if (!feedback || feedback.length < 3) { setActionLoading(null); return; }
 
-      // Build the new prompt: feedback replaces the original prompt for this image
+      // The modal text IS the full new prompt (user edited it directly)
       const promptField = imageNumber === 1 ? "prompt_image1" : "prompt_image2";
-      const originalPrompt = imageNumber === 1
-        ? (asset?.prompt_image1 ?? asset?.prompt_image ?? "")
-        : (asset?.prompt_image2 ?? "");
-      const newPrompt = `${originalPrompt}\n\n[FEEDBACK: ${feedback}]`;
+      const newPrompt = feedback;
 
       // Update the prompt in the DB
       await fetch(`/api/projects/${projectId}/assets`, {
@@ -1097,114 +1243,56 @@ export default function ProjectDashboardPage() {
               </a>
             );
 
-            /** Inline reject panel for a specific image */
-            const RejectPanel = ({ imgNum }: { imgNum: 1 | 2 }) => {
+            /** Render the RejectModal portal for this asset's image */
+            const renderRejectModal = (imgNum: 1 | 2) => {
               const key = `${asset.id}-${imgNum}`;
+              if (showRejectInput !== key) return null;
               const otherImgNum = imgNum === 1 ? 2 : 1;
               const otherImg = imgNum === 1 ? img2 : img1;
-              if (showRejectInput !== key) return null;
-
-              const uploadedRef = regenRefImages[key];
-
-              async function handleUploadRef(e: React.ChangeEvent<HTMLInputElement>) {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                setUploadingRef(key);
-                try {
-                  const formData = new FormData();
-                  formData.append("file", file);
-                  const res = await fetch("/api/upload", { method: "POST", body: formData });
-                  if (res.ok) {
-                    const { url } = await res.json();
-                    setRegenRefImages((prev) => ({ ...prev, [key]: { url, name: file.name } }));
-                  }
-                } catch { /* ignore */ }
-                setUploadingRef(null);
-                e.target.value = "";
-              }
+              const currentPrompt = imgNum === 1
+                ? (asset.prompt_image1 ?? asset.prompt_image ?? "")
+                : (asset.prompt_image2 ?? "");
 
               return (
-                <div className="mt-2 space-y-2 rounded-lg border border-slate-700 bg-slate-800/50 p-3">
-                  <textarea
-                    placeholder={`Novo prompt / ajuste para imagem ${imgNum}...`}
-                    value={rejectNotes[key] ?? ""}
-                    onChange={(e) => setRejectNotes((prev) => ({ ...prev, [key]: e.target.value }))}
-                    rows={2}
-                    className="w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none"
-                  />
-                  <div className="flex flex-wrap items-center gap-3">
-                    {otherImg && (
-                      <label className="flex items-center gap-2 text-xs text-slate-300">
-                        <input
-                          type="checkbox"
-                          checked={carryReference[key] ?? false}
-                          onChange={(e) => setCarryReference((prev) => ({ ...prev, [key]: e.target.checked }))}
-                          className="rounded border-slate-600 bg-slate-800"
-                        />
-                        Levar imagem {otherImgNum} como referencia
-                      </label>
-                    )}
-                    {/* Reference image upload */}
-                    <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-slate-600 px-2.5 py-1.5 text-xs text-slate-300 transition-colors hover:border-purple-500 hover:text-purple-300">
-                      {uploadingRef === key ? (
-                        <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-500 border-t-white" />
-                      ) : (
-                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
-                        </svg>
-                      )}
-                      {uploadedRef ? uploadedRef.name : "Imagem de referencia"}
-                      <input type="file" accept="image/*" className="hidden" onChange={handleUploadRef} />
-                    </label>
-                    {uploadedRef && (
-                      <button
-                        onClick={() => setRegenRefImages((prev) => { const next = { ...prev }; delete next[key]; return next; })}
-                        className="text-xs text-red-400 hover:text-red-300"
-                        title="Remover referencia"
-                      >
-                        &times;
-                      </button>
-                    )}
-                  </div>
-                  {uploadedRef && (
-                    <div className="flex items-center gap-2">
-                      <img
-                        src={uploadedRef.url}
-                        alt="Referencia"
-                        className="h-12 w-12 rounded border border-slate-600 object-cover cursor-pointer"
-                        onClick={() => setLightboxSrc({ src: uploadedRef.url, alt: "Referencia" })}
-                      />
-                      <span className="text-[10px] text-slate-500">Sera enviada como referencia visual</span>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={regenImageProvider[key] ?? imageProvider}
-                      onChange={(e) => setRegenImageProvider((prev) => ({ ...prev, [key]: e.target.value }))}
-                      className="rounded-lg border border-slate-600 bg-slate-900 px-2 py-1.5 text-xs text-white outline-none"
-                    >
-                      <option value="google">Nano Banana Pro</option>
-                      <option value="imagen4">Imagen 4</option>
-                      <option value="higgsfield">Higgsfield</option>
-                      <option value="runway">Runway</option>
-                    </select>
-                    <button
-                      onClick={() => handleRegenerateImage(asset.id, imgNum)}
-                      disabled={actionLoading === asset.id || (rejectNotes[key]?.trim().length ?? 0) < 3}
-                      className="flex-1 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-amber-500 disabled:opacity-50"
-                    >
-                      {actionLoading === asset.id ? (
-                        <div className="mx-auto h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                      ) : (
-                        `Regenerar Imagem ${imgNum}`
-                      )}
-                    </button>
-                    <button onClick={() => setShowRejectInput(null)}
-                      className="rounded-lg border border-slate-600 px-2 py-1.5 text-xs text-slate-400 hover:bg-slate-700">
-                      Cancelar
-                    </button>
-                  </div>
-                </div>
+                <RejectModal
+                  key={key}
+                  assetCode={asset.asset_code}
+                  imgNum={imgNum}
+                  initialText={currentPrompt}
+                  otherImgLabel={otherImg ? `imagem ${otherImgNum}` : null}
+                  hasOtherImg={!!otherImg}
+                  providers={[
+                    { value: "google", label: "Nano Banana Pro" },
+                    { value: "imagen4", label: "Imagen 4" },
+                    { value: "higgsfield", label: "Higgsfield" },
+                    { value: "runway", label: "Runway" },
+                  ]}
+                  defaultProvider={imageProvider}
+                  uploadedRef={regenRefImages[key]}
+                  uploadingRef={uploadingRef === key}
+                  onUploadRef={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    setUploadingRef(key);
+                    try {
+                      const formData = new FormData();
+                      formData.append("file", file);
+                      const res = await fetch("/api/upload", { method: "POST", body: formData });
+                      if (res.ok) {
+                        const { url } = await res.json();
+                        setRegenRefImages((prev) => ({ ...prev, [key]: { url, name: file.name } }));
+                      }
+                    } catch { /* ignore */ }
+                    setUploadingRef(null);
+                    e.target.value = "";
+                  }}
+                  onRemoveRef={() => setRegenRefImages((prev) => { const next = { ...prev }; delete next[key]; return next; })}
+                  onLightboxRef={(url) => setLightboxSrc({ src: url, alt: "Referencia" })}
+                  onSubmit={(text, provider, carry) => {
+                    handleRegenerateImage(asset.id, imgNum, text, provider, carry);
+                  }}
+                  onClose={() => setShowRejectInput(null)}
+                />
               );
             };
 
@@ -1415,8 +1503,8 @@ export default function ProjectDashboardPage() {
                               </button>
                             )}
                           </div>
-                          <RejectPanel imgNum={1} />
-                          {hasImage2Prompt && <RejectPanel imgNum={2} />}
+                          {renderRejectModal(1)}
+                          {renderRejectModal(2)}
                         </>
                       )}
 
@@ -1459,8 +1547,8 @@ export default function ProjectDashboardPage() {
                               </button>
                             )}
                           </div>
-                          <RejectPanel imgNum={1} />
-                          {hasImage2Prompt && <RejectPanel imgNum={2} />}
+                          {renderRejectModal(1)}
+                          {renderRejectModal(2)}
                         </>
                       )}
                     </div>
