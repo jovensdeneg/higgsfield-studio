@@ -5,6 +5,13 @@ import ImprovePromptButton from "@/components/ImprovePromptButton";
 
 const PROVIDERS = [
   {
+    value: "google",
+    label: "Nano Banana Pro",
+    models: [
+      { value: "nano-banana-pro", label: "Nano Banana Pro" },
+    ],
+  },
+  {
     value: "imagen4",
     label: "Imagen 4",
     models: [
@@ -20,13 +27,6 @@ const PROVIDERS = [
       { value: "nano-banana-pro", label: "Nano Banana Pro" },
       { value: "flux-pro-kontext-max", label: "Flux Pro Kontext Max" },
       { value: "seedream-v4", label: "Seedream V4" },
-    ],
-  },
-  {
-    value: "google",
-    label: "Google AI",
-    models: [
-      { value: "nano-banana-pro", label: "Nano Banana Pro" },
     ],
   },
   {
@@ -48,8 +48,8 @@ interface GeneratedImage {
 
 export default function GenerateImagePage() {
   const [prompt, setPrompt] = useState("");
-  const [provider, setProvider] = useState("imagen4");
-  const [model, setModel] = useState("imagen-4-ultra");
+  const [provider, setProvider] = useState("google");
+  const [model, setModel] = useState("nano-banana-pro");
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<GeneratedImage[]>([]);

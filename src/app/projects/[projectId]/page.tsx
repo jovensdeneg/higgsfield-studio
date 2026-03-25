@@ -37,6 +37,19 @@ function CopyBtn({ text }: { text: string }) {
   );
 }
 
+/** Edit pencil button */
+function EditBtn({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="ml-0.5 inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-700 hover:text-white"
+      title="Editar"
+    >
+      <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>
+    </button>
+  );
+}
+
 interface Asset {
   id: string;
   asset_code: string;
@@ -157,11 +170,14 @@ export default function ProjectDashboardPage() {
   const [dispatchResult, setDispatchResult] = useState<string | null>(null);
   const [rejectNotes, setRejectNotes] = useState<Record<string, string>>({});
   const [showRejectInput, setShowRejectInput] = useState<string | null>(null); // "assetId-1" or "assetId-2"
-  const [imageProvider, setImageProvider] = useState<string>("imagen4");
+  const [imageProvider, setImageProvider] = useState<string>("google");
   const [videoProvider, setVideoProvider] = useState<string>("runway");
   // Per-asset provider overrides for regeneration
   const [regenImageProvider, setRegenImageProvider] = useState<Record<string, string>>({});
   const [regenVideoProvider, setRegenVideoProvider] = useState<Record<string, string>>({});
+  // Inline prompt editing: key = "assetId-prompt_image1" etc., value = current edit text
+  const [editingPrompt, setEditingPrompt] = useState<string | null>(null); // key of currently editing prompt
+  const [editDraft, setEditDraft] = useState<string>("");
   // Carry-reference toggles: when regenerating image X, optionally send the other image as reference
   const [carryReference, setCarryReference] = useState<Record<string, boolean>>({});
   // Uploaded reference images for regeneration (key = "assetId-imgNum")
@@ -423,6 +439,27 @@ export default function ProjectDashboardPage() {
       });
     } catch { /* ignore */ }
     setActionLoading(null);
+  }
+
+  /** Save inline prompt edit */
+  async function handleSavePrompt(assetId: string, field: string, newValue: string) {
+    try {
+      await fetch(`/api/projects/${projectId}/assets`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          asset_ids: [assetId],
+          updates: { [field]: newValue },
+        }),
+      });
+      setAssets((prev) =>
+        prev.map((a) =>
+          a.id === assetId ? { ...a, [field]: newValue } : a
+        )
+      );
+    } catch { /* ignore */ }
+    setEditingPrompt(null);
+    setEditDraft("");
   }
 
   /** Undo scene approval → back to "ready" for adjustments */
@@ -758,9 +795,9 @@ export default function ProjectDashboardPage() {
             className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-white outline-none transition-colors hover:border-slate-600 focus:border-purple-500"
             disabled={dispatching !== null}
           >
+            <option value="google">Nano Banana Pro</option>
             <option value="imagen4">Imagen 4</option>
             <option value="higgsfield">Higgsfield</option>
-            <option value="google">Google AI</option>
             <option value="runway">Runway</option>
           </select>
           <div className="relative">
@@ -1146,8 +1183,8 @@ export default function ProjectDashboardPage() {
                       onChange={(e) => setRegenImageProvider((prev) => ({ ...prev, [key]: e.target.value }))}
                       className="rounded-lg border border-slate-600 bg-slate-900 px-2 py-1.5 text-xs text-white outline-none"
                     >
+                      <option value="google">Nano Banana Pro</option>
                       <option value="imagen4">Imagen 4</option>
-                      <option value="google">Google AI</option>
                       <option value="higgsfield">Higgsfield</option>
                       <option value="runway">Runway</option>
                     </select>
@@ -1276,40 +1313,56 @@ export default function ProjectDashboardPage() {
                             <><span className="text-slate-500">Duracao</span><span className="text-slate-300">{params.duration}s</span></>
                           )}
                         </div>
-                        {/* Prompts with copy buttons */}
-                        {(asset.prompt_image1 ?? asset.prompt_image) && (
-                          <div className="mt-1.5 border-t border-slate-700/50 pt-1.5">
-                            <div className="flex items-start gap-1">
-                              <span className="flex-shrink-0 text-slate-500">Prompt Img 1</span>
-                              <CopyBtn text={asset.prompt_image1 ?? asset.prompt_image ?? ""} />
+                        {/* Prompts with copy + edit buttons */}
+                        {([
+                          { label: "Prompt Img 1", field: "prompt_image1", value: asset.prompt_image1 ?? asset.prompt_image },
+                          { label: "Prompt Img 2", field: "prompt_image2", value: asset.prompt_image2 },
+                          { label: "Prompt Video", field: "prompt_video", value: asset.prompt_video },
+                        ] as { label: string; field: string; value: string | null }[]).filter((p) => p.value).map((p, pi) => {
+                          const editKey = `${asset.id}-${p.field}`;
+                          const isEditing = editingPrompt === editKey;
+                          return (
+                            <div key={pi} className={`${pi === 0 ? "mt-1.5" : "mt-1"} border-t border-slate-700/50 pt-1.5`}>
+                              <div className="flex items-start gap-1">
+                                <span className="flex-shrink-0 text-slate-500">{p.label}</span>
+                                <CopyBtn text={p.value!} />
+                                <EditBtn onClick={() => {
+                                  if (isEditing) { setEditingPrompt(null); setEditDraft(""); }
+                                  else { setEditingPrompt(editKey); setEditDraft(p.value!); }
+                                }} />
+                              </div>
+                              {isEditing ? (
+                                <div className="mt-1 space-y-1.5">
+                                  <textarea
+                                    value={editDraft}
+                                    onChange={(e) => setEditDraft(e.target.value)}
+                                    rows={4}
+                                    className="w-full rounded-lg border border-slate-600 bg-slate-900 px-2.5 py-1.5 text-[11px] leading-relaxed text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none"
+                                  />
+                                  <div className="flex gap-1.5">
+                                    <button
+                                      onClick={() => handleSavePrompt(asset.id, p.field, editDraft)}
+                                      disabled={editDraft.trim() === p.value?.trim()}
+                                      className="rounded bg-purple-600 px-2.5 py-1 text-[10px] font-medium text-white hover:bg-purple-500 disabled:opacity-40"
+                                    >
+                                      Salvar
+                                    </button>
+                                    <button
+                                      onClick={() => { setEditingPrompt(null); setEditDraft(""); }}
+                                      className="rounded bg-slate-700 px-2.5 py-1 text-[10px] text-slate-300 hover:bg-slate-600"
+                                    >
+                                      Cancelar
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <p className="mt-0.5 line-clamp-2 text-slate-400" title={p.value!}>
+                                  {p.value!.length > 120 ? `${p.value!.slice(0, 120)}...` : p.value}
+                                </p>
+                              )}
                             </div>
-                            <p className="mt-0.5 line-clamp-2 text-slate-400" title={asset.prompt_image1 ?? asset.prompt_image ?? ""}>
-                              {(asset.prompt_image1 ?? asset.prompt_image ?? "").slice(0, 120)}...
-                            </p>
-                          </div>
-                        )}
-                        {asset.prompt_image2 && (
-                          <div className="mt-1 border-t border-slate-700/50 pt-1">
-                            <div className="flex items-start gap-1">
-                              <span className="flex-shrink-0 text-slate-500">Prompt Img 2</span>
-                              <CopyBtn text={asset.prompt_image2} />
-                            </div>
-                            <p className="mt-0.5 line-clamp-2 text-slate-400" title={asset.prompt_image2}>
-                              {asset.prompt_image2.slice(0, 120)}...
-                            </p>
-                          </div>
-                        )}
-                        {asset.prompt_video && (
-                          <div className="mt-1 border-t border-slate-700/50 pt-1">
-                            <div className="flex items-start gap-1">
-                              <span className="flex-shrink-0 text-slate-500">Prompt Video</span>
-                              <CopyBtn text={asset.prompt_video} />
-                            </div>
-                            <p className="mt-0.5 line-clamp-2 text-slate-400" title={asset.prompt_video}>
-                              {asset.prompt_video.slice(0, 120)}...
-                            </p>
-                          </div>
-                        )}
+                          );
+                        })}
                       </div>
                     </div>
 
