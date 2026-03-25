@@ -709,6 +709,37 @@ export default function ProjectDashboardPage() {
     let skipped = 0;
     const total = pendingAssets.length;
 
+    // Track freshly generated URLs so scene refs can use them mid-batch
+    // (React state won't update during the loop)
+    const freshUrls: Record<string, { img1?: string; img2?: string }> = {};
+    // Pre-populate from existing asset state
+    for (const a of assets) {
+      const i1 = a.image1_url ?? a.image_url;
+      if (i1 || a.image2_url) {
+        freshUrls[a.asset_code] = { img1: i1 ?? undefined, img2: a.image2_url ?? undefined };
+      }
+    }
+
+    /** Collect extra reference images for an asset, using freshUrls for latest data */
+    function collectExtraRefs(assetId: string, assetCode: string): string[] {
+      const refs: string[] = [];
+      // Uploaded files
+      if (pendingRefs[assetId]?.length) {
+        refs.push(...pendingRefs[assetId].map((r) => r.url));
+      }
+      // Scene references — use freshUrls for latest generated images
+      const sceneRefCodes = pendingSceneRefs[assetId];
+      if (sceneRefCodes?.size) {
+        for (const code of sceneRefCodes) {
+          if (code === assetCode) continue; // skip self
+          const fresh = freshUrls[code];
+          if (fresh?.img1) refs.push(fresh.img1);
+          if (fresh?.img2) refs.push(fresh.img2);
+        }
+      }
+      return refs;
+    }
+
     // Process one scene at a time: image1 → image2 (sequential per scene)
     for (let i = 0; i < total; i++) {
       const asset = pendingAssets[i];
@@ -724,22 +755,7 @@ export default function ProjectDashboardPage() {
           `Cena ${i + 1}/${total} — gerando frame inicial... (${completed} ok, ${failed} falhas)`
         );
         try {
-          // Collect all extra references: uploaded files + scene references
-          const extraRefs: string[] = [];
-          if (pendingRefs[asset.id]?.length) {
-            extraRefs.push(...pendingRefs[asset.id].map((r) => r.url));
-          }
-          const sceneRefCodes = pendingSceneRefs[asset.id];
-          if (sceneRefCodes?.size) {
-            for (const code of sceneRefCodes) {
-              const refAsset = assets.find((a) => a.asset_code === code);
-              if (refAsset) {
-                const r1 = refAsset.image1_url ?? refAsset.image_url;
-                if (r1) extraRefs.push(r1);
-                if (refAsset.image2_url) extraRefs.push(refAsset.image2_url);
-              }
-            }
-          }
+          const extraRefs = collectExtraRefs(asset.id, asset.asset_code);
 
           const res = await fetch("/api/dispatch/images", {
             method: "POST",
@@ -755,11 +771,28 @@ export default function ProjectDashboardPage() {
           if (data.status === "failed") { failed++; continue; }
           if (data.status === "skipped") { skipped++; continue; }
 
+          // Track the freshly generated URL
+          if (data.url) {
+            freshUrls[asset.asset_code] = { ...freshUrls[asset.asset_code], img1: data.url };
+          }
+
+          // Update local state so UI refreshes
+          setAssets((prev) =>
+            prev.map((a) =>
+              a.id === asset.id
+                ? { ...a, image_url: data.url, image1_url: data.url, status: data.needsImage2 ? "generating" : "ready" }
+                : a
+            )
+          );
+
           // If image1 succeeded and there's a prompt_image2, generate image2 immediately
           if (data.status === "completed" && data.needsImage2) {
             setDispatchResult(
               `Cena ${i + 1}/${total} — gerando frame final... (${completed} ok, ${failed} falhas)`
             );
+            // Re-collect refs (now includes this asset's own img1 via freshUrls)
+            const extraRefs2 = collectExtraRefs(asset.id, asset.asset_code);
+
             const res2 = await fetch("/api/dispatch/images", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -767,11 +800,23 @@ export default function ProjectDashboardPage() {
                 assetId: asset.id,
                 provider,
                 imageNumber: 2,
-                ...(extraRefs.length > 0 && { extraReferenceImages: extraRefs }),
+                ...(extraRefs2.length > 0 && { extraReferenceImages: extraRefs2 }),
               }),
             });
             const data2 = await res2.json();
-            if (data2.status === "completed") completed++;
+            if (data2.status === "completed") {
+              completed++;
+              if (data2.url) {
+                freshUrls[asset.asset_code] = { ...freshUrls[asset.asset_code], img2: data2.url };
+              }
+              setAssets((prev) =>
+                prev.map((a) =>
+                  a.id === asset.id
+                    ? { ...a, image2_url: data2.url, status: "ready" }
+                    : a
+                )
+              );
+            }
             else if (data2.status === "failed") failed++;
             else if (data2.status === "skipped") skipped++;
           } else {
@@ -1525,9 +1570,9 @@ export default function ProjectDashboardPage() {
                             if (ra.image2_url) sceneRefImgCount++;
                           }
                         }
-                        const totalRefs = uploadedCount + sceneRefImgCount;
-                        // Other scenes that have images (for the dropdown)
-                        const otherScenes = assets.filter((a) => a.id !== asset.id && (a.image1_url || a.image_url || a.image2_url));
+                        const totalRefs = uploadedCount + sceneRefSet.size;
+                        // All other scenes for the dropdown (including pending ones)
+                        const otherScenes = assets.filter((a) => a.id !== asset.id);
 
                         return (
                           <div className="space-y-2">
@@ -1556,14 +1601,19 @@ export default function ProjectDashboardPage() {
                               {[...sceneRefSet].map((code) => {
                                 const ra = assets.find((a) => a.asset_code === code);
                                 const img = ra?.image1_url ?? ra?.image_url;
-                                if (!img) return null;
                                 return (
                                   <div key={`sc-${code}`} className="group relative">
-                                    <img
-                                      src={img} alt={code}
-                                      className="h-12 w-12 cursor-pointer rounded border border-purple-500/50 object-cover ring-1 ring-purple-500/30"
-                                      onClick={() => setLightboxSrc({ src: img, alt: code })}
-                                    />
+                                    {img ? (
+                                      <img
+                                        src={img} alt={code}
+                                        className="h-12 w-12 cursor-pointer rounded border border-purple-500/50 object-cover ring-1 ring-purple-500/30"
+                                        onClick={() => setLightboxSrc({ src: img, alt: code })}
+                                      />
+                                    ) : (
+                                      <div className="flex h-12 w-12 items-center justify-center rounded border border-dashed border-purple-500/40 bg-slate-800 text-[8px] font-bold text-purple-400">
+                                        {code}
+                                      </div>
+                                    )}
                                     <span className="absolute bottom-0 left-0 right-0 truncate bg-slate-900/80 px-0.5 text-center text-[7px] font-bold text-purple-300">
                                       {code}
                                     </span>
@@ -1667,7 +1717,12 @@ export default function ProjectDashboardPage() {
                                               <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded bg-slate-700 text-[8px] text-slate-500">?</div>
                                             )}
                                             <div className="min-w-0 flex-1">
-                                              <span className="font-semibold">{other.asset_code}</span>
+                                              <div className="flex items-center gap-1.5">
+                                                <span className="font-semibold">{other.asset_code}</span>
+                                                {!thumb && (
+                                                  <span className="rounded bg-slate-700 px-1 text-[8px] text-slate-500">pendente</span>
+                                                )}
+                                              </div>
                                               {other.scenedescription && (
                                                 <p className="truncate text-[9px] text-slate-500">{other.scenedescription}</p>
                                               )}
@@ -1688,7 +1743,10 @@ export default function ProjectDashboardPage() {
 
                             {totalRefs > 0 && (
                               <p className="text-[9px] text-slate-600">
-                                {totalRefs} imagem(ns) de referencia — serao enviadas na geracao
+                                {uploadedCount > 0 && `${uploadedCount} upload(s)`}
+                                {uploadedCount > 0 && sceneRefSet.size > 0 && " + "}
+                                {sceneRefSet.size > 0 && `${sceneRefSet.size} cena(s)`}
+                                {" "}— referencias enviadas na geracao
                               </p>
                             )}
                           </div>
