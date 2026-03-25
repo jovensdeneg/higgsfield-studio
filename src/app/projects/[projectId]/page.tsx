@@ -59,9 +59,9 @@ function RejectModal({
   hasOtherImg,
   providers,
   defaultProvider,
-  uploadedRef,
+  uploadedRefs,
   uploadingRef: isUploading,
-  onUploadRef,
+  onUploadRefs,
   onRemoveRef,
   onLightboxRef,
   onSubmit,
@@ -74,10 +74,10 @@ function RejectModal({
   hasOtherImg: boolean;
   providers: { value: string; label: string }[];
   defaultProvider: string;
-  uploadedRef: { url: string; name: string } | undefined;
+  uploadedRefs: { url: string; name: string }[];
   uploadingRef: boolean;
-  onUploadRef: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  onRemoveRef: () => void;
+  onUploadRefs: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onRemoveRef: (index: number) => void;
   onLightboxRef: (url: string) => void;
   onSubmit: (text: string, provider: string, carryRef: boolean) => void;
   onClose: () => void;
@@ -138,7 +138,7 @@ function RejectModal({
               </label>
             )}
 
-            {/* Ref image upload */}
+            {/* Ref image upload — multiple */}
             <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-slate-600 px-3 py-2 text-xs text-slate-300 transition-colors hover:border-purple-500 hover:text-purple-300">
               {isUploading ? (
                 <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-500 border-t-white" />
@@ -147,25 +147,29 @@ function RejectModal({
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
                 </svg>
               )}
-              {uploadedRef ? uploadedRef.name : "Imagem de referencia"}
-              <input type="file" accept="image/*" className="hidden" onChange={onUploadRef} />
+              {uploadedRefs.length > 0 ? `${uploadedRefs.length} referencia(s)` : "Imagens de referencia"}
+              <input type="file" accept="image/*" multiple className="hidden" onChange={onUploadRefs} />
             </label>
-            {uploadedRef && (
-              <button onClick={onRemoveRef} className="text-xs text-red-400 hover:text-red-300" title="Remover referencia">
-                &times;
-              </button>
-            )}
           </div>
 
-          {/* Uploaded ref preview */}
-          {uploadedRef && (
-            <div className="flex items-center gap-2">
-              <img
-                src={uploadedRef.url} alt="Referencia"
-                className="h-14 w-14 cursor-pointer rounded border border-slate-600 object-cover"
-                onClick={() => onLightboxRef(uploadedRef.url)}
-              />
-              <span className="text-[10px] text-slate-500">Sera enviada como referencia visual</span>
+          {/* Uploaded refs preview */}
+          {uploadedRefs.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              {uploadedRefs.map((ref, ri) => (
+                <div key={ri} className="group relative">
+                  <img
+                    src={ref.url} alt={ref.name}
+                    className="h-14 w-14 cursor-pointer rounded border border-slate-600 object-cover"
+                    onClick={() => onLightboxRef(ref.url)}
+                  />
+                  <button
+                    onClick={() => onRemoveRef(ri)}
+                    className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[8px] text-white opacity-0 transition-opacity group-hover:opacity-100"
+                    title="Remover"
+                  >&times;</button>
+                </div>
+              ))}
+              <span className="text-[10px] text-slate-500">Serao enviadas como referencia visual</span>
             </div>
           )}
 
@@ -331,7 +335,7 @@ export default function ProjectDashboardPage() {
   // Carry-reference toggles: when regenerating image X, optionally send the other image as reference
   const [carryReference, setCarryReference] = useState<Record<string, boolean>>({});
   // Uploaded reference images for regeneration (key = "assetId-imgNum")
-  const [regenRefImages, setRegenRefImages] = useState<Record<string, { url: string; name: string }>>({});
+  const [regenRefImages, setRegenRefImages] = useState<Record<string, { url: string; name: string }[]>>({});
   const [uploadingRef, setUploadingRef] = useState<string | null>(null);
   // Reference images for pending assets (pre-generation, key = assetId)
   const [pendingRefs, setPendingRefs] = useState<Record<string, { url: string; name: string }[]>>({});
@@ -583,8 +587,8 @@ export default function ProjectDashboardPage() {
 
       // Build extra reference images array
       const extraReferenceImages: string[] = [];
-      const uploadedRef = regenRefImages[rejectKey];
-      if (uploadedRef) extraReferenceImages.push(uploadedRef.url);
+      const uploadedRefs = regenRefImages[rejectKey];
+      if (uploadedRefs?.length) extraReferenceImages.push(...uploadedRefs.map((r) => r.url));
       setRegenRefImages((prev) => { const next = { ...prev }; delete next[rejectKey]; return next; });
 
       // Dispatch the specific image
@@ -1358,25 +1362,38 @@ export default function ProjectDashboardPage() {
                     { value: "runway", label: "Runway" },
                   ]}
                   defaultProvider={imageProvider}
-                  uploadedRef={regenRefImages[key]}
+                  uploadedRefs={regenRefImages[key] ?? []}
                   uploadingRef={uploadingRef === key}
-                  onUploadRef={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
+                  onUploadRefs={async (e) => {
+                    const files = e.target.files;
+                    if (!files || files.length === 0) return;
                     setUploadingRef(key);
                     try {
-                      const formData = new FormData();
-                      formData.append("file", file);
-                      const res = await fetch("/api/upload", { method: "POST", body: formData });
-                      if (res.ok) {
-                        const { url } = await res.json();
-                        setRegenRefImages((prev) => ({ ...prev, [key]: { url, name: file.name } }));
+                      const newRefs: { url: string; name: string }[] = [];
+                      for (let fi = 0; fi < files.length; fi++) {
+                        const file = files[fi];
+                        const formData = new FormData();
+                        formData.append("file", file);
+                        const res = await fetch("/api/upload", { method: "POST", body: formData });
+                        if (res.ok) {
+                          const { url } = await res.json();
+                          newRefs.push({ url, name: file.name });
+                        }
+                      }
+                      if (newRefs.length > 0) {
+                        setRegenRefImages((prev) => ({
+                          ...prev,
+                          [key]: [...(prev[key] ?? []), ...newRefs],
+                        }));
                       }
                     } catch { /* ignore */ }
                     setUploadingRef(null);
                     e.target.value = "";
                   }}
-                  onRemoveRef={() => setRegenRefImages((prev) => { const next = { ...prev }; delete next[key]; return next; })}
+                  onRemoveRef={(index) => setRegenRefImages((prev) => ({
+                    ...prev,
+                    [key]: (prev[key] ?? []).filter((_, i) => i !== index),
+                  }))}
                   onLightboxRef={(url) => setLightboxSrc({ src: url, alt: "Referencia" })}
                   onSubmit={(text, provider, carry) => {
                     handleRegenerateImage(asset.id, imgNum, text, provider, carry);
