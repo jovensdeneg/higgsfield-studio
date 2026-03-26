@@ -707,6 +707,8 @@ export default function ProjectDashboardPage() {
     setDispatching("images");
     setDispatchResult(null);
 
+    try {
+
     const provider = imageProvider;
     let completed = 0;
     let failed = 0;
@@ -853,9 +855,15 @@ export default function ProjectDashboardPage() {
     setDispatchResult(
       `Cenas: ${completed} completas, ${failed} falhas, ${skipped} ignoradas`
     );
-    setDispatching(null);
-    isDispatchingRef.current = false;
-    dispatchQueueRef.current = [];
+    } catch (err) {
+      setDispatchResult(
+        `Erro no lote: ${err instanceof Error ? err.message : "falha inesperada"}.`
+      );
+    } finally {
+      setDispatching(null);
+      isDispatchingRef.current = false;
+      dispatchQueueRef.current = [];
+    }
   }
 
   async function handleDispatchVideos() {
@@ -874,6 +882,7 @@ export default function ProjectDashboardPage() {
     setDispatching("videos");
     setDispatchResult(null);
 
+    try {
     const total = approvedIds.length;
     const provider = videoProvider;
     let submitted = 0;
@@ -913,9 +922,15 @@ export default function ProjectDashboardPage() {
     setDispatchResult(
       `Videos: ${submitted} enviados, ${failed} falhas, ${skipped} ignorados`
     );
-    setDispatching(null);
-    isDispatchingRef.current = false;
-    dispatchQueueRef.current = [];
+    } catch (err) {
+      setDispatchResult(
+        `Erro no lote de videos: ${err instanceof Error ? err.message : "falha inesperada"}`
+      );
+    } finally {
+      setDispatching(null);
+      isDispatchingRef.current = false;
+      dispatchQueueRef.current = [];
+    }
   }
 
   async function handlePollJobs() {
